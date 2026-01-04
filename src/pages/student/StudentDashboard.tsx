@@ -15,51 +15,18 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-const subjectAttendance = [
-  { name: "Mathematics", attendance: 92, classes: 45 },
-  { name: "Physics", attendance: 88, classes: 42 },
-  { name: "Chemistry", attendance: 95, classes: 40 },
-  { name: "English", attendance: 85, classes: 38 },
-  { name: "Computer Science", attendance: 90, classes: 35 },
-];
+const subjectAttendance: any[] = [];
 
-const upcomingClasses = [
-  { id: "1", subject: "Mathematics", time: "09:00 AM", room: "Room 204" },
-  { id: "2", subject: "Physics Lab", time: "11:00 AM", room: "Lab 3" },
-  { id: "3", subject: "English", time: "02:00 PM", room: "Room 105" },
-];
+const upcomingClasses: any[] = [];
 
-const leaveRequests = [
-  { id: "1", dates: "Dec 28-29, 2025", reason: "Medical", status: "approved" },
-  { id: "2", dates: "Jan 5, 2026", reason: "Family Event", status: "pending" },
-];
+const leaveRequests: any[] = [];
 
-const attendanceData: Record<string, "present" | "absent" | "late" | "holiday" | "weekend" | null> = {
-  "2026-01-02": "present",
-};
-
-// Generate some sample data for the current month
-for (let i = 1; i <= 31; i++) {
-  const date = `2025-12-${String(i).padStart(2, "0")}`;
-  const dayOfWeek = new Date(2025, 11, i).getDay();
-  if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-    if (i === 25) {
-      attendanceData[date] = "holiday";
-    } else if (i === 18) {
-      attendanceData[date] = "absent";
-    } else if (i === 12 || i === 22) {
-      attendanceData[date] = "late";
-    } else {
-      attendanceData[date] = "present";
-    }
-  }
-}
+const attendanceData: Record<string, "present" | "absent" | "late" | "holiday" | "weekend" | null> = {};
 
 export default function StudentDashboard() {
   return (
     <DashboardLayout
       role="student"
-      userName="Alex Thompson"
       pageTitle="My Dashboard"
       pageDescription="Track your attendance and academic progress"
     >

@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { Bell, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/contexts/AuthContext";
 
 type UserRole = "admin" | "teacher" | "student";
 
@@ -18,14 +19,24 @@ interface DashboardLayoutProps {
 export function DashboardLayout({
   children,
   role,
-  userName = "John Doe",
-  userEmail = "john@example.com",
+  userName,
+  userEmail,
   pageTitle,
   pageDescription,
 }: DashboardLayoutProps) {
+  const { userData } = useAuth();
+  
+  // Use auth context data as fallback
+  const displayName = userName || userData?.displayName || "User";
+  const email = userEmail || userData?.email || "";
+
   return (
     <div className="min-h-screen bg-background">
-      <DashboardSidebar role={role} userName={userName} userEmail={userEmail} />
+      <DashboardSidebar 
+        role={role} 
+        userName={displayName} 
+        userEmail={email} 
+      />
       
       <div className="pl-64 transition-all duration-300">
         {/* Top Header */}
@@ -49,11 +60,8 @@ export function DashboardLayout({
                 className="w-64 pl-9"
               />
             </div>
-            <Button variant="ghost" size="icon" className="relative">
+            <Button variant="ghost" size="icon">
               <Bell className="h-5 w-5" />
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground">
-                3
-              </span>
             </Button>
           </div>
         </header>

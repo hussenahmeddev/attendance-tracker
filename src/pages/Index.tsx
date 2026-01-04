@@ -113,19 +113,6 @@ export default function Index() {
               Streamline attendance management with role-based dashboards, real-time analytics, 
               and automated notifications. Built for schools, colleges, and universities.
             </p>
-            <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Link to="/auth?mode=signup">
-                <Button variant="hero" size="xl" className="gap-2">
-                  Start Free Trial
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </Link>
-              <Link to="/admin">
-                <Button variant="outline" size="xl">
-                  View Demo
-                </Button>
-              </Link>
-            </div>
           </div>
         </div>
       </section>
@@ -208,20 +195,6 @@ export default function Index() {
             <p className="mb-8 text-lg text-muted-foreground">
               Join thousands of educational institutions already using EduTrack.
             </p>
-            <div className="mb-8 flex flex-wrap items-center justify-center gap-4">
-              {["No credit card required", "14-day free trial", "Cancel anytime"].map((item) => (
-                <div key={item} className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <CheckCircle2 className="h-4 w-4 text-success" />
-                  {item}
-                </div>
-              ))}
-            </div>
-            <Link to="/auth?mode=signup">
-              <Button variant="hero" size="xl" className="gap-2">
-                Get Started for Free
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </Link>
           </div>
         </div>
       </section>

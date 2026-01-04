@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard,
   Users,
@@ -19,7 +20,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 
 type UserRole = "admin" | "teacher" | "student";
@@ -65,14 +66,25 @@ const navItemsByRole: Record<UserRole, NavItem[]> = {
 
 interface DashboardSidebarProps {
   role: UserRole;
-  userName: string;
-  userEmail: string;
+  userName?: string;
+  userEmail?: string;
 }
 
-export function DashboardSidebar({ role, userName, userEmail }: DashboardSidebarProps) {
+export function DashboardSidebar({ role, userName = "User", userEmail = "" }: DashboardSidebarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const navItems = navItemsByRole[role];
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate("/");
+    } catch (error) {
+      console.error("Failed to logout:", error);
+    }
+  };
 
   const roleLabels: Record<UserRole, string> = {
     admin: "Administrator",
@@ -176,6 +188,7 @@ export function DashboardSidebar({ role, userName, userEmail }: DashboardSidebar
           {!collapsed && <span>Home</span>}
         </Link>
         <button
+          onClick={handleLogout}
           className={cn(
             "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/70 hover:bg-destructive/20 hover:text-destructive transition-all duration-200"
           )}
