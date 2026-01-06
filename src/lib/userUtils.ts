@@ -3,7 +3,7 @@ import { db } from './firebase';
 
 // Initialize counters if they don't exist
 export const initializeCounters = async () => {
-  const counterRef = doc(db, 'counters', 'userCounters');
+  const counterRef = doc(db, 'counters', 'userIds');
   const counterDoc = await getDoc(counterRef);
   
   if (!counterDoc.exists()) {

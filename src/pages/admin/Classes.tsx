@@ -20,67 +20,161 @@ import {
   UserPlus,
   UserMinus,
   Eye,
-  Settings
+  Settings,
+  CheckCircle,
+  XCircle
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { fetchAllClasses, createClass, approveClassRequest, rejectClassRequest, getClassStats, type Class, type ClassFormData } from "@/lib/classUtils";
 
-const mockClasses = [
-  { 
-    id: "1", 
-    name: "Mathematics Grade 10", 
-    subject: "Mathematics", 
-    grade: "10", 
-    teacher: "Sarah Teacher", 
-    teacherId: "TCH001",
-    students: 28, 
-    schedule: "Mon, Wed, Fri - 9:00 AM", 
-    room: "Room 101",
-    status: "active"
-  },
-  { 
-    id: "2", 
-    name: "Physics Grade 11", 
-    subject: "Physics", 
-    grade: "11", 
-    teacher: "Mike Instructor", 
-    teacherId: "TCH002",
-    students: 24, 
-    schedule: "Tue, Thu - 10:30 AM", 
-    room: "Lab 201",
-    status: "active"
-  },
-  { 
-    id: "3", 
-    name: "Chemistry Grade 12", 
-    subject: "Chemistry", 
-    grade: "12", 
-    teacher: "Unassigned", 
-    teacherId: null,
-    students: 0, 
-    schedule: "Not scheduled", 
-    room: "Lab 202",
-    status: "inactive"
-  }
-];
-
-const mockTeachers = [
-  { id: "TCH001", name: "Sarah Teacher" },
-  { id: "TCH002", name: "Mike Instructor" },
-  { id: "TCH003", name: "Lisa Professor" }
-];
-
-const mockStudents = [
-  { id: "STD001", name: "Alice Student", grade: "10" },
-  { id: "STD002", name: "Bob Student", grade: "11" },
-  { id: "STD003", name: "Charlie Student", grade: "10" }
-];
+interface User {
+  id: string;
+  userId: string;
+  displayName: string;
+  email: string;
+  role: string;
+  status?: string;
+  createdAt: string;
+}
 
 export default function AdminClasses() {
-  const [classes, setClasses] = useState(mockClasses);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [gradeFilter, setGradeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [isCreateClassOpen, setIsCreateClassOpen] = useState(false);
+  const [isAddClassOpen, setIsAddClassOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [formData, setFormData] = useState<ClassFormData>({
+    name: '',
+    subject: '',
+    teacher: '',
+    grade: '',
+    room: '',
+    maxStudents: ''
+  });
+
+  // Fetch users and classes from Firebase
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch users
+        const usersCollection = collection(db, 'users');
+        const usersSnapshot = await getDocs(usersCollection);
+        const usersData = usersSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            userId: data.userId || 'N/A',
+            displayName: data.displayName || 'Unknown',
+            email: data.email || 'No email',
+            role: data.role || 'student',
+            status: data.status || 'active',
+            createdAt: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'
+          } as User;
+        });
+        setUsers(usersData);
+
+        // Fetch classes using utility function
+        const classesData = await fetchAllClasses();
+        setClasses(classesData);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Generate dynamic classes based on real data
+  const teachers = users.filter(u => u.role === 'teacher');
+  const students = users.filter(u => u.role === 'student');
+
+  const handleCreateClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.name || !formData.subject || !formData.teacher) {
+      alert('Please fill in required fields (Name, Subject, Teacher)');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const selectedTeacher = teachers.find(t => t.id === formData.teacher);
+      
+      if (!selectedTeacher) {
+        alert('Please select a valid teacher');
+        return;
+      }
+
+      const newClassData = {
+        name: formData.name,
+        subject: formData.subject,
+        grade: formData.grade || 'All',
+        teacher: selectedTeacher.displayName,
+        teacherId: selectedTeacher.userId,
+        room: formData.room || 'TBD',
+        maxStudents: parseInt(formData.maxStudents) || 30,
+        students: 0,
+        schedule: "To be scheduled",
+        status: 'active' as const,
+        createdAt: new Date().toISOString()
+      };
+
+      // Create class using utility function
+      const classId = await createClass(newClassData);
+      
+      // Add to local state
+      const localClass = {
+        id: classId,
+        ...newClassData
+      };
+      
+      setClasses(prev => [localClass, ...prev]);
+      setFormData({ name: '', subject: '', teacher: '', grade: '', room: '', maxStudents: '' });
+      setIsAddClassOpen(false);
+      alert('Class created successfully!');
+      
+    } catch (error) {
+      console.error('Error creating class:', error);
+      alert('Failed to create class. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleApproveClass = async (classId: string) => {
+    try {
+      await approveClassRequest(classId);
+      setClasses(prev => prev.map(cls => 
+        cls.id === classId ? { ...cls, status: 'active' as const } : cls
+      ));
+      alert('Class approved successfully!');
+    } catch (error) {
+      console.error('Error approving class:', error);
+      alert('Failed to approve class. Please try again.');
+    }
+  };
+
+  const handleRejectClass = async (classId: string) => {
+    if (!confirm('Are you sure you want to reject this class request? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      await rejectClassRequest(classId);
+      setClasses(prev => prev.filter(cls => cls.id !== classId));
+      alert('Class request rejected and removed.');
+    } catch (error) {
+      console.error('Error rejecting class:', error);
+      alert('Failed to reject class. Please try again.');
+    }
+  };
 
   const filteredClasses = classes.filter(cls => {
     const matchesSearch = cls.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -91,21 +185,22 @@ export default function AdminClasses() {
     return matchesSearch && matchesGrade && matchesStatus;
   });
 
+  const stats = getClassStats(classes);
+
   return (
     <DashboardLayout
       role="admin"
       pageTitle="Class Management"
-      pageDescription="Manage classes, subjects, and assignments"
+      pageDescription="Manage classes, subjects, and enrollments"
     >
       <div className="space-y-6">
         <UserProfile />
 
         <Tabs defaultValue="all-classes" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="all-classes">All Classes</TabsTrigger>
-            <TabsTrigger value="create-class">Create Class</TabsTrigger>
-            <TabsTrigger value="assign-teachers">Assign Teachers</TabsTrigger>
-            <TabsTrigger value="manage-students">Manage Students</TabsTrigger>
+            <TabsTrigger value="add-class">Add Class</TabsTrigger>
+            <TabsTrigger value="enrollments">Enrollments</TabsTrigger>
             <TabsTrigger value="schedules">Schedules</TabsTrigger>
           </TabsList>
 
@@ -118,297 +213,421 @@ export default function AdminClasses() {
                     <BookOpen className="h-5 w-5" />
                     All Classes ({filteredClasses.length})
                   </CardTitle>
-                  <Dialog open={isCreateClassOpen} onOpenChange={setIsCreateClassOpen}>
+                  <Dialog open={isAddClassOpen} onOpenChange={setIsAddClassOpen}>
                     <DialogTrigger asChild>
                       <Button>
                         <Plus className="h-4 w-4 mr-2" />
-                        Create New Class
+                        Add New Class
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-md">
                       <DialogHeader>
-                        <DialogTitle>Create New Class</DialogTitle>
+                        <DialogTitle>Add New Class</DialogTitle>
                       </DialogHeader>
-                      <div className="space-y-4">
+                      <form onSubmit={handleCreateClass} className="space-y-4">
                         <div className="space-y-2">
-                          <Label htmlFor="className">Class Name</Label>
-                          <Input id="className" placeholder="e.g., Mathematics Grade 10" />
+                          <Label htmlFor="className">Class Name *</Label>
+                          <Input 
+                            id="className" 
+                            placeholder="e.g., Mathematics Grade 10"
+                            value={formData.name}
+                            onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                            required
+                          />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="subject">Subject</Label>
-                          <Input id="subject" placeholder="e.g., Mathematics" />
+                          <Label htmlFor="subject">Subject *</Label>
+                          <Input 
+                            id="subject" 
+                            placeholder="e.g., Mathematics"
+                            value={formData.subject}
+                            onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
+                            required
+                          />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="grade">Grade</Label>
-                          <Select>
+                          <Label htmlFor="teacher">Assign Teacher *</Label>
+                          <Select value={formData.teacher} onValueChange={(value) => setFormData(prev => ({ ...prev, teacher: value }))}>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select grade" />
+                              <SelectValue placeholder="Select teacher" />
                             </SelectTrigger>
                             <SelectContent>
-                              {Array.from({length: 12}, (_, i) => (
-                                <SelectItem key={i+1} value={String(i+1)}>Grade {i+1}</SelectItem>
+                              {teachers.map((teacher) => (
+                                <SelectItem key={teacher.id} value={teacher.id}>
+                                  {teacher.displayName} ({teacher.userId})
+                                </SelectItem>
                               ))}
+                              {teachers.length === 0 && (
+                                <SelectItem value="none" disabled>No teachers available</SelectItem>
+                              )}
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="room">Room</Label>
-                          <Input id="room" placeholder="e.g., Room 101" />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="grade">Grade</Label>
+                            <Select value={formData.grade} onValueChange={(value) => setFormData(prev => ({ ...prev, grade: value }))}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Grade" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="9">Grade 9</SelectItem>
+                                <SelectItem value="10">Grade 10</SelectItem>
+                                <SelectItem value="11">Grade 11</SelectItem>
+                                <SelectItem value="12">Grade 12</SelectItem>
+                                <SelectItem value="All">All Grades</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="room">Room</Label>
+                            <Input 
+                              id="room" 
+                              placeholder="Room 101"
+                              value={formData.room}
+                              onChange={(e) => setFormData(prev => ({ ...prev, room: e.target.value }))}
+                            />
+                          </div>
                         </div>
                         <div className="flex gap-2">
-                          <Button className="flex-1">Create Class</Button>
-                          <Button variant="outline" onClick={() => setIsCreateClassOpen(false)}>Cancel</Button>
+                          <Button type="submit" className="flex-1" disabled={creating}>
+                            {creating ? 'Creating...' : 'Create Class'}
+                          </Button>
+                          <Button type="button" variant="outline" onClick={() => setIsAddClassOpen(false)}>
+                            Cancel
+                          </Button>
                         </div>
-                      </div>
+                      </form>
                     </DialogContent>
                   </Dialog>
                 </div>
               </CardHeader>
               <CardContent>
-                {/* Filters */}
-                <div className="flex gap-4 mb-6">
-                  <div className="flex-1">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        placeholder="Search classes..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
-                      />
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                      <p className="text-muted-foreground">Loading classes...</p>
                     </div>
                   </div>
-                  <Select value={gradeFilter} onValueChange={setGradeFilter}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Filter by grade" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Grades</SelectItem>
-                      {Array.from({length: 12}, (_, i) => (
-                        <SelectItem key={i+1} value={String(i+1)}>Grade {i+1}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                ) : (
+                  <>
+                    {/* Filters */}
+                    <div className="flex gap-4 mb-6">
+                      <div className="flex-1">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            placeholder="Search classes..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      <Select value={gradeFilter} onValueChange={setGradeFilter}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue placeholder="Filter by grade" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Grades</SelectItem>
+                          <SelectItem value="9">Grade 9</SelectItem>
+                          <SelectItem value="10">Grade 10</SelectItem>
+                          <SelectItem value="11">Grade 11</SelectItem>
+                          <SelectItem value="12">Grade 12</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue placeholder="Filter by status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                {/* Classes Grid */}
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {filteredClasses.map((cls) => (
-                    <Card key={cls.id} className={`border-l-4 ${cls.status === 'active' ? 'border-l-green-500' : 'border-l-gray-400'}`}>
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <h3 className="font-semibold text-lg">{cls.name}</h3>
-                            <p className="text-muted-foreground">{cls.subject} • Grade {cls.grade}</p>
-                          </div>
-                          <Badge variant={cls.status === 'active' ? 'default' : 'secondary'}>
-                            {cls.status}
-                          </Badge>
+                    {/* Stats Cards */}
+                    <div className="grid gap-4 md:grid-cols-4 mb-6">
+                      <Card>
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
+                          <p className="text-sm text-muted-foreground">Total Classes</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+                          <p className="text-sm text-muted-foreground">Active Classes</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-orange-600">{stats.pending}</div>
+                          <p className="text-sm text-muted-foreground">Pending Approval</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-4 text-center">
+                          <div className="text-2xl font-bold text-purple-600">{stats.totalStudents}</div>
+                          <p className="text-sm text-muted-foreground">Total Students</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Classes Grid */}
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {filteredClasses.length === 0 ? (
+                        <div className="col-span-2 text-center py-8">
+                          <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-muted-foreground">No classes found</p>
+                          <p className="text-sm text-muted-foreground">Create your first class to get started</p>
                         </div>
-                        
-                        <div className="space-y-2 text-sm text-muted-foreground mb-4">
-                          <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4" />
-                            <span>{cls.teacher}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <BookOpen className="h-4 w-4" />
-                            <span>{cls.students} students • {cls.room}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4" />
-                            <span>{cls.schedule}</span>
-                          </div>
-                        </div>
-                        
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" className="flex-1">
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Button>
-                          <Button size="sm" variant="outline">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="outline">
-                            <Settings className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                      ) : (
+                        filteredClasses.map((cls) => (
+                          <Card key={cls.id} className={`border-l-4 ${cls.status === 'pending' ? 'border-l-orange-500' : 'border-l-primary'}`}>
+                            <CardContent className="p-4">
+                              <div className="flex justify-between items-start mb-3">
+                                <div>
+                                  <h3 className="font-semibold text-lg">{cls.name}</h3>
+                                  <p className="text-muted-foreground">{cls.subject} • Grade {cls.grade}</p>
+                                </div>
+                                <Badge variant={
+                                  cls.status === "active" ? "default" : 
+                                  cls.status === "pending" ? "secondary" : 
+                                  "outline"
+                                }>
+                                  {cls.status === "pending" ? "Pending" : cls.status}
+                                </Badge>
+                              </div>
+                              <div className="space-y-2 text-sm text-muted-foreground mb-4">
+                                <div className="flex items-center gap-2">
+                                  <Users className="h-4 w-4" />
+                                  Teacher: {cls.teacher}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Users className="h-4 w-4" />
+                                  {cls.students} / {cls.maxStudents} students
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-4 w-4" />
+                                  {cls.schedule}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <BookOpen className="h-4 w-4" />
+                                  {cls.room}
+                                </div>
+                                {cls.requestedAt && (
+                                  <div className="flex items-center gap-2">
+                                    <Calendar className="h-4 w-4" />
+                                    Requested: {new Date(cls.requestedAt).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex gap-2">
+                                {cls.status === 'pending' ? (
+                                  <>
+                                    <Button 
+                                      size="sm" 
+                                      variant="default" 
+                                      className="flex-1"
+                                      onClick={() => handleApproveClass(cls.id)}
+                                    >
+                                      <CheckCircle className="h-4 w-4 mr-1" />
+                                      Approve
+                                    </Button>
+                                    <Button 
+                                      size="sm" 
+                                      variant="destructive"
+                                      onClick={() => handleRejectClass(cls.id)}
+                                    >
+                                      <XCircle className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button size="sm" variant="outline" className="flex-1">
+                                      <Eye className="h-4 w-4 mr-1" />
+                                      View Details
+                                    </Button>
+                                    <Button size="sm" variant="outline">
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button size="sm" variant="outline">
+                                      <Settings className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Create Class Tab */}
-          <TabsContent value="create-class" className="space-y-4">
+          {/* Add Class Tab */}
+          <TabsContent value="add-class" className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>Create New Class</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="newClassName">Class Name</Label>
-                      <Input id="newClassName" placeholder="e.g., Advanced Mathematics" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="newSubject">Subject</Label>
-                      <Input id="newSubject" placeholder="e.g., Mathematics" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="newGrade">Grade Level</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select grade level" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Array.from({length: 12}, (_, i) => (
-                            <SelectItem key={i+1} value={String(i+1)}>Grade {i+1}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="capacity">Maximum Capacity</Label>
-                      <Input id="capacity" type="number" placeholder="e.g., 30" />
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="newRoom">Classroom</Label>
-                      <Input id="newRoom" placeholder="e.g., Room 101" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Description (Optional)</Label>
-                      <textarea 
-                        id="description" 
-                        className="w-full p-2 border rounded-lg resize-none h-20"
-                        placeholder="Class description..."
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="semester">Semester</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select semester" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="fall">Fall 2024</SelectItem>
-                          <SelectItem value="spring">Spring 2025</SelectItem>
-                          <SelectItem value="summer">Summer 2025</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-6">
-                  <Button className="flex-1">Create Class</Button>
-                  <Button variant="outline">Save as Draft</Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Assign Teachers Tab */}
-          <TabsContent value="assign-teachers" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Assign Teachers to Classes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {classes.map((cls) => (
-                    <div key={cls.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div>
-                        <h3 className="font-semibold">{cls.name}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Current teacher: {cls.teacher}
-                        </p>
+                <form onSubmit={handleCreateClass} className="space-y-6">
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="fullClassName">Class Name *</Label>
+                        <Input 
+                          id="fullClassName" 
+                          placeholder="e.g., Advanced Mathematics Grade 12"
+                          value={formData.name}
+                          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                          required
+                        />
                       </div>
-                      <div className="flex gap-2">
-                        <Select>
-                          <SelectTrigger className="w-48">
+                      <div className="space-y-2">
+                        <Label htmlFor="subjectName">Subject *</Label>
+                        <Input 
+                          id="subjectName" 
+                          placeholder="e.g., Mathematics"
+                          value={formData.subject}
+                          onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="gradeLevel">Grade Level</Label>
+                        <Select value={formData.grade} onValueChange={(value) => setFormData(prev => ({ ...prev, grade: value }))}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select grade" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="9">Grade 9</SelectItem>
+                            <SelectItem value="10">Grade 10</SelectItem>
+                            <SelectItem value="11">Grade 11</SelectItem>
+                            <SelectItem value="12">Grade 12</SelectItem>
+                            <SelectItem value="All">All Grades</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="assignTeacher">Assign Teacher *</Label>
+                        <Select value={formData.teacher} onValueChange={(value) => setFormData(prev => ({ ...prev, teacher: value }))}>
+                          <SelectTrigger>
                             <SelectValue placeholder="Select teacher" />
                           </SelectTrigger>
                           <SelectContent>
-                            {mockTeachers.map((teacher) => (
+                            {teachers.map((teacher) => (
                               <SelectItem key={teacher.id} value={teacher.id}>
-                                {teacher.name}
+                                {teacher.displayName} ({teacher.userId})
                               </SelectItem>
                             ))}
+                            {teachers.length === 0 && (
+                              <SelectItem value="none" disabled>No teachers available</SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
-                        <Button size="sm">Assign</Button>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="classRoom">Classroom</Label>
+                        <Input 
+                          id="classRoom" 
+                          placeholder="e.g., Room 101, Lab 201"
+                          value={formData.room}
+                          onChange={(e) => setFormData(prev => ({ ...prev, room: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="maxStudents">Maximum Students</Label>
+                        <Input 
+                          id="maxStudents" 
+                          type="number" 
+                          placeholder="30"
+                          value={formData.maxStudents}
+                          onChange={(e) => setFormData(prev => ({ ...prev, maxStudents: e.target.value }))}
+                        />
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="submit" className="flex-1" disabled={creating}>
+                      {creating ? 'Creating...' : 'Create Class'}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setFormData({ name: '', subject: '', teacher: '', grade: '', room: '', maxStudents: '' })}>
+                      Clear Form
+                    </Button>
+                  </div>
+                </form>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Manage Students Tab */}
-          <TabsContent value="manage-students" className="space-y-4">
+          {/* Enrollments Tab */}
+          <TabsContent value="enrollments" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Manage Class Enrollments</CardTitle>
+                <CardTitle>Student Enrollments</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="flex gap-4">
-                    <Select>
-                      <SelectTrigger className="w-64">
-                        <SelectValue placeholder="Select class" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {classes.map((cls) => (
-                          <SelectItem key={cls.id} value={cls.id}>
-                            {cls.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button variant="outline">
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Enroll Students
-                    </Button>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-2xl font-bold text-green-600">{students.length}</div>
+                        <p className="text-sm text-muted-foreground">Total Students</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-2xl font-bold text-blue-600">{classes.length}</div>
+                        <p className="text-sm text-muted-foreground">Active Classes</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-2xl font-bold text-purple-600">
+                          {classes.reduce((acc, cls) => acc + cls.students, 0)}
+                        </div>
+                        <p className="text-sm text-muted-foreground">Total Enrollments</p>
+                      </CardContent>
+                    </Card>
                   </div>
-                  
-                  <div className="border rounded-lg p-4">
-                    <h3 className="font-semibold mb-3">Available Students</h3>
-                    <div className="space-y-2">
-                      {mockStudents.map((student) => (
-                        <div key={student.id} className="flex items-center justify-between p-2 border rounded">
-                          <div>
-                            <p className="font-medium">{student.name}</p>
-                            <p className="text-sm text-muted-foreground">Grade {student.grade}</p>
+
+                  <div className="space-y-3">
+                    <h3 className="font-semibold">Available Students</h3>
+                    {students.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-4">No students registered yet</p>
+                    ) : (
+                      students.slice(0, 5).map((student) => (
+                        <div key={student.id} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                              <Users className="h-4 w-4 text-primary" />
+                            </div>
+                            <div>
+                              <p className="font-medium">{student.displayName}</p>
+                              <p className="text-sm text-muted-foreground">{student.userId} • {student.email}</p>
+                            </div>
                           </div>
                           <div className="flex gap-2">
                             <Button size="sm" variant="outline">
                               <UserPlus className="h-4 w-4 mr-1" />
                               Enroll
                             </Button>
-                            <Button size="sm" variant="outline">
-                              <UserMinus className="h-4 w-4 mr-1" />
-                              Remove
-                            </Button>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -419,7 +638,10 @@ export default function AdminClasses() {
           <TabsContent value="schedules" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Class Schedules</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Class Schedules
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -427,28 +649,26 @@ export default function AdminClasses() {
                     <div key={cls.id} className="flex items-center justify-between p-4 border rounded-lg">
                       <div>
                         <h3 className="font-semibold">{cls.name}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {cls.schedule} • {cls.room}
-                        </p>
+                        <p className="text-sm text-muted-foreground">{cls.schedule}</p>
+                        <p className="text-sm text-muted-foreground">{cls.room} • {cls.teacher}</p>
                       </div>
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline">
-                          <Calendar className="h-4 w-4 mr-1" />
+                          <Edit className="h-4 w-4 mr-1" />
                           Edit Schedule
                         </Button>
                         <Button size="sm" variant="outline">
-                          <Clock className="h-4 w-4 mr-1" />
-                          Set Times
+                          <Calendar className="h-4 w-4 mr-1" />
+                          View Calendar
                         </Button>
                       </div>
                     </div>
                   ))}
                 </div>
-                
-                <div className="mt-6 p-4 bg-muted/30 rounded-lg">
-                  <h3 className="font-semibold mb-2">Schedule Conflicts</h3>
-                  <p className="text-sm text-muted-foreground">No scheduling conflicts detected.</p>
-                </div>
+                <Button className="mt-4" variant="outline">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Schedule
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>

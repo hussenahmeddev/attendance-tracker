@@ -19,6 +19,7 @@ import {
   Home,
   ChevronLeft,
   ChevronRight,
+  Wrench,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -39,6 +40,7 @@ const adminNavItems: NavItem[] = [
   { title: "Reports", href: "/admin/reports", icon: BarChart3 },
   { title: "Calendar", href: "/admin/calendar", icon: Calendar },
   { title: "Settings", href: "/admin/settings", icon: Settings },
+  { title: "System Utils", href: "/admin/system-utils", icon: Wrench },
 ];
 
 const teacherNavItems: NavItem[] = [

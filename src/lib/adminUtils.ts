@@ -34,7 +34,7 @@ export const updateUserRole = async (userId: string, newRole: 'admin' | 'teacher
 
 // Generate new user ID for role change
 const generateNewUserId = async (role: string): Promise<string> => {
-  const counterRef = doc(db, 'counters', 'userCounters');
+  const counterRef = doc(db, 'counters', 'userIds');
   
   return await runTransaction(db, async (transaction) => {
     const counterDoc = await transaction.get(counterRef);

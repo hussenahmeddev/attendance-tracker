@@ -23,26 +23,66 @@ import {
   Eye,
   Download
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
-const mockUsers = [
-  { id: "1", userId: "ADM001", name: "John Admin", email: "john.admin@school.edu", role: "admin", status: "active", createdAt: "2024-01-15" },
-  { id: "2", userId: "TCH001", name: "Sarah Teacher", email: "sarah.teacher@school.edu", role: "teacher", status: "active", createdAt: "2024-01-20" },
-  { id: "3", userId: "TCH002", name: "Mike Instructor", email: "mike.instructor@school.edu", role: "teacher", status: "active", createdAt: "2024-01-25" },
-  { id: "4", userId: "STD001", name: "Alice Student", email: "alice@student.edu", role: "student", status: "active", createdAt: "2024-02-01" },
-  { id: "5", userId: "STD002", name: "Bob Student", email: "bob@student.edu", role: "student", status: "inactive", createdAt: "2024-02-05" },
-];
+interface User {
+  id: string;
+  userId: string;
+  displayName: string;
+  email: string;
+  role: string;
+  status?: string;
+  createdAt: string;
+}
 
 export default function AdminUsers() {
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    role: ''
+  });
+
+  // Fetch users from Firebase
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const usersCollection = collection(db, 'users');
+        const usersSnapshot = await getDocs(usersCollection);
+        const usersData = usersSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            userId: data.userId || 'N/A',
+            displayName: data.displayName || 'Unknown',
+            email: data.email || 'No email',
+            role: data.role || 'student',
+            status: data.status || 'active',
+            createdAt: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'
+          } as User;
+        });
+        setUsers(usersData);
+      } catch (error) {
+        console.error('Error fetching users:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, []);
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.userId.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = roleFilter === "all" || user.role === roleFilter;
@@ -68,16 +108,83 @@ export default function AdminUsers() {
     }
   };
 
-  const toggleUserStatus = (userId: string) => {
-    setUsers(prev => prev.map(user => 
-      user.id === userId 
-        ? { ...user, status: user.status === "active" ? "inactive" : "active" }
-        : user
-    ));
+  const toggleUserStatus = async (userId: string) => {
+    try {
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
+
+      const newStatus = user.status === "active" ? "inactive" : "active";
+      
+      // Update in Firebase
+      await updateDoc(doc(db, 'users', userId), {
+        status: newStatus
+      });
+
+      // Update local state
+      setUsers(prev => prev.map(user => 
+        user.id === userId 
+          ? { ...user, status: newStatus }
+          : user
+      ));
+    } catch (error) {
+      console.error('Error updating user status:', error);
+    }
   };
 
-  const deleteUser = (userId: string) => {
-    setUsers(prev => prev.filter(user => user.id !== userId));
+  const deleteUser = async (userId: string) => {
+    try {
+      // Delete from Firebase
+      await deleteDoc(doc(db, 'users', userId));
+      
+      // Update local state
+      setUsers(prev => prev.filter(user => user.id !== userId));
+    } catch (error) {
+      console.error('Error deleting user:', error);
+    }
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.name || !formData.email || !formData.role) {
+      alert('Please fill in all fields');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      // Create user document in Firestore
+      const newUser = {
+        displayName: formData.name,
+        email: formData.email,
+        role: formData.role,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        // Generate a temporary userId - in a real app this would come from Firebase Auth
+        userId: `${formData.role.toUpperCase().slice(0,3)}${String(Date.now()).slice(-3)}`
+      };
+
+      // Add to Firestore
+      const docRef = await addDoc(collection(db, 'users'), newUser);
+      
+      // Add to local state with the new document ID
+      const localUser = {
+        id: docRef.id,
+        ...newUser,
+        createdAt: new Date().toLocaleDateString()
+      };
+      
+      setUsers(prev => [localUser, ...prev]);
+      setFormData({ name: '', email: '', role: '' });
+      setIsAddUserOpen(false);
+      alert('User created successfully!');
+      
+    } catch (error) {
+      console.error('Error creating user:', error);
+      alert('Failed to create user. Please try again.');
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -117,18 +224,31 @@ export default function AdminUsers() {
                       <DialogHeader>
                         <DialogTitle>Add New User</DialogTitle>
                       </DialogHeader>
-                      <div className="space-y-4">
+                      <form onSubmit={handleCreateUser} className="space-y-4">
                         <div className="space-y-2">
                           <Label htmlFor="name">Full Name</Label>
-                          <Input id="name" placeholder="Enter full name" />
+                          <Input 
+                            id="name" 
+                            placeholder="Enter full name"
+                            value={formData.name}
+                            onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                            required
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="email">Email</Label>
-                          <Input id="email" type="email" placeholder="Enter email address" />
+                          <Input 
+                            id="email" 
+                            type="email" 
+                            placeholder="Enter email address"
+                            value={formData.email}
+                            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                            required
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="role">Role</Label>
-                          <Select>
+                          <Select value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value }))}>
                             <SelectTrigger>
                               <SelectValue placeholder="Select role" />
                             </SelectTrigger>
@@ -140,110 +260,132 @@ export default function AdminUsers() {
                           </Select>
                         </div>
                         <div className="flex gap-2">
-                          <Button className="flex-1">Create User</Button>
-                          <Button variant="outline" onClick={() => setIsAddUserOpen(false)}>Cancel</Button>
+                          <Button type="submit" className="flex-1" disabled={creating}>
+                            {creating ? 'Creating...' : 'Create User'}
+                          </Button>
+                          <Button type="button" variant="outline" onClick={() => setIsAddUserOpen(false)}>
+                            Cancel
+                          </Button>
                         </div>
-                      </div>
+                      </form>
                     </DialogContent>
                   </Dialog>
                 </div>
               </CardHeader>
               <CardContent>
-                {/* Filters */}
-                <div className="flex gap-4 mb-6">
-                  <div className="flex-1">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        placeholder="Search users..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
-                      />
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                      <p className="text-muted-foreground">Loading users...</p>
                     </div>
                   </div>
-                  <Select value={roleFilter} onValueChange={setRoleFilter}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Filter by role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Roles</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="teacher">Teacher</SelectItem>
-                      <SelectItem value="student">Student</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Users Table */}
-                <div className="space-y-3">
-                  {filteredUsers.map((user) => (
-                    <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                          {getRoleIcon(user.role)}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{user.name}</p>
-                            <Badge className={`text-xs ${getRoleColor(user.role)}`}>
-                              {user.role.toUpperCase()}
-                            </Badge>
-                            <Badge variant={user.status === "active" ? "default" : "secondary"}>
-                              {user.status}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground">{user.email}</p>
-                          <p className="text-xs text-muted-foreground">ID: {user.userId} • Created: {user.createdAt}</p>
+                ) : (
+                  <>
+                    {/* Filters */}
+                    <div className="flex gap-4 mb-6">
+                      <div className="flex-1">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            placeholder="Search users..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-10"
+                          />
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline">
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => toggleUserStatus(user.id)}
-                        >
-                          {user.status === "active" ? (
-                            <>
-                              <UserX className="h-4 w-4 mr-1" />
-                              Deactivate
-                            </>
-                          ) : (
-                            <>
-                              <UserCheck className="h-4 w-4 mr-1" />
-                              Activate
-                            </>
-                          )}
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => deleteUser(user.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <Select value={roleFilter} onValueChange={setRoleFilter}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue placeholder="Filter by role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Roles</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="teacher">Teacher</SelectItem>
+                          <SelectItem value="student">Student</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue placeholder="Filter by status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                  ))}
-                </div>
+
+                    {/* Users Table */}
+                    <div className="space-y-3">
+                      {filteredUsers.length === 0 ? (
+                        <div className="text-center py-8">
+                          <Users className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-muted-foreground">No users found</p>
+                        </div>
+                      ) : (
+                        filteredUsers.map((user) => (
+                          <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                                {getRoleIcon(user.role)}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium">{user.displayName}</p>
+                                  <Badge className={`text-xs ${getRoleColor(user.role)}`}>
+                                    {user.role.toUpperCase()}
+                                  </Badge>
+                                  <Badge variant={user.status === "active" ? "default" : "secondary"}>
+                                    {user.status}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground">{user.email}</p>
+                                <p className="text-xs text-muted-foreground">ID: {user.userId} • Created: {user.createdAt}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline">
+                                <Eye className="h-4 w-4 mr-1" />
+                                View
+                              </Button>
+                              <Button size="sm" variant="outline">
+                                <Edit className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => toggleUserStatus(user.id)}
+                              >
+                                {user.status === "active" ? (
+                                  <>
+                                    <UserX className="h-4 w-4 mr-1" />
+                                    Deactivate
+                                  </>
+                                ) : (
+                                  <>
+                                    <UserCheck className="h-4 w-4 mr-1" />
+                                    Activate
+                                  </>
+                                )}
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => deleteUser(user.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -389,15 +531,21 @@ export default function AdminUsers() {
                     <h3 className="font-semibold mb-3">User Statistics</h3>
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div>
-                        <p className="text-2xl font-bold text-red-600">1</p>
+                        <p className="text-2xl font-bold text-red-600">
+                          {users.filter(u => u.role === 'admin').length}
+                        </p>
                         <p className="text-sm text-muted-foreground">Admins</p>
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-blue-600">2</p>
+                        <p className="text-2xl font-bold text-blue-600">
+                          {users.filter(u => u.role === 'teacher').length}
+                        </p>
                         <p className="text-sm text-muted-foreground">Teachers</p>
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-green-600">2</p>
+                        <p className="text-2xl font-bold text-green-600">
+                          {users.filter(u => u.role === 'student').length}
+                        </p>
                         <p className="text-sm text-muted-foreground">Students</p>
                       </div>
                     </div>

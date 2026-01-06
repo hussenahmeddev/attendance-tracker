@@ -43,7 +43,7 @@ interface AuthProviderProps {
 
 // Function to generate auto-increment user ID
 const generateUserId = async (role: string): Promise<string> => {
-  const counterRef = doc(db, 'counters', 'userCounters');
+  const counterRef = doc(db, 'counters', 'userIds');
   
   return await runTransaction(db, async (transaction) => {
     const counterDoc = await transaction.get(counterRef);

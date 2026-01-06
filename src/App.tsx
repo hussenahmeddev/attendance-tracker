@@ -13,6 +13,7 @@ import AdminAttendance from "./pages/admin/Attendance";
 import AdminReports from "./pages/admin/Reports";
 import AdminCalendar from "./pages/admin/Calendar";
 import AdminSettings from "./pages/admin/Settings";
+import SystemUtils from "./pages/admin/SystemUtils";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
 import TeacherClasses from "./pages/teacher/Classes";
 import TeacherAttendance from "./pages/teacher/Attendance";
@@ -90,6 +91,14 @@ const App = () => (
             element={
               <ProtectedRoute requiredRole="admin">
                 <AdminSettings />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/system-utils" 
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <SystemUtils />
               </ProtectedRoute>
             } 
           />
