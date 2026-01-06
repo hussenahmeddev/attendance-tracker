@@ -1,10 +1,10 @@
 import { Button } from "@/components/ui/button";
-import { 
-  GraduationCap, 
-  ShieldCheck, 
-  Users, 
-  BarChart3, 
-  Clock, 
+import {
+  GraduationCap,
+  ShieldCheck,
+  Users,
+  BarChart3,
+  Clock,
   Bell,
   ChevronRight,
   CheckCircle2,
@@ -95,7 +95,7 @@ export default function Index() {
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
           <div className="absolute left-1/2 top-0 -z-10 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-primary/5 blur-3xl" />
         </div>
-        
+
         <div className="container mx-auto px-4 py-24 lg:py-32">
           <div className="mx-auto max-w-4xl text-center animate-fade-in">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
@@ -110,7 +110,7 @@ export default function Index() {
               for Modern Education
             </h1>
             <p className="mb-8 text-lg text-muted-foreground sm:text-xl">
-              Streamline attendance management with role-based dashboards, real-time analytics, 
+              Streamline attendance management with role-based dashboards, real-time analytics,
               and automated notifications. Built for schools, colleges, and universities.
             </p>
           </div>
@@ -128,7 +128,7 @@ export default function Index() {
               A complete solution designed for educational institutions of all sizes.
             </p>
           </div>
-          
+
           <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
             {features.map((feature, index) => (
               <div
@@ -158,7 +158,7 @@ export default function Index() {
               Each user gets a personalized experience designed for their specific needs.
             </p>
           </div>
-          
+
           <div className="grid gap-6 md:grid-cols-3">
             {roles.map((role, index) => (
               <Link

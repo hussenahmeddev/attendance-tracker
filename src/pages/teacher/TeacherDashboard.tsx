@@ -23,6 +23,8 @@ import {
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { fetchTeacherClasses, type Class } from "@/lib/classUtils";
+import { getAttendanceStatistics, fetchTeacherAttendance } from "@/lib/attendanceUtils";
 
 interface Student {
   id: string;
@@ -38,15 +40,29 @@ export default function TeacherDashboard() {
   const { userData, loading } = useAuth();
   const [students, setStudents] = useState<Student[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(true);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [attendanceStats, setAttendanceStats] = useState({
+    attendanceRate: 0,
+    totalClasses: 0,
+    classesToday: 0,
+    totalStudents: 0
+  });
 
-  // Fetch students from Firebase
+  // Fetch teacher's classes and students
   useEffect(() => {
-    const fetchStudents = async () => {
+    const fetchData = async () => {
+      if (!userData?.userId) return;
+
       try {
+        // Fetch teacher's classes
+        const teacherClasses = await fetchTeacherClasses(userData.userId);
+        setClasses(teacherClasses.filter(c => c.status === 'active'));
+
+        // Fetch all students (for display purposes)
         const usersCollection = collection(db, 'users');
         const studentsQuery = query(usersCollection, where('role', '==', 'student'));
         const studentsSnapshot = await getDocs(studentsQuery);
-        
+
         const studentsData = studentsSnapshot.docs.map(doc => {
           const data = doc.data();
           return {
@@ -59,30 +75,27 @@ export default function TeacherDashboard() {
             createdAt: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'
           } as Student;
         });
-        
         setStudents(studentsData);
+
+        // Set default stats for now to make page visible
+        setAttendanceStats({
+          attendanceRate: 0,
+          totalClasses: teacherClasses.length,
+          classesToday: teacherClasses.filter(c => c.status === 'active').length,
+          totalStudents: teacherClasses.reduce((acc, cls) => acc + (cls.students || 0), 0)
+        });
+
       } catch (error) {
-        console.error('Error fetching students:', error);
+        console.error('Error fetching teacher data:', error);
       } finally {
         setStudentsLoading(false);
       }
     };
 
-    fetchStudents();
-  }, []);
+    fetchData();
+  }, [userData]);
 
-  // Generate classes based on real data - but start with empty until proper class system is built
-  const classes = students.length > 0 ? [
-    {
-      id: "1",
-      name: "Sample Class",
-      subject: "General",
-      grade: "All",
-      students: students.length,
-      schedule: "To be scheduled",
-      room: "TBD"
-    }
-  ] : [];
+
 
   const [selectedClass, setSelectedClass] = useState(classes.length > 0 ? classes[0] : {
     id: "default",
@@ -126,7 +139,7 @@ export default function TeacherDashboard() {
   }
 
   const handleAttendanceChange = (studentId: string, status: "present" | "absent" | "late") => {
-    setStudents(prev => 
+    setStudents(prev =>
       prev.map(s => s.id === studentId ? { ...s, status } : s)
     );
   };
@@ -223,7 +236,7 @@ export default function TeacherDashboard() {
               <CardContent>
                 <div className="mb-4">
                   <label className="block text-sm font-medium mb-2">Select Class:</label>
-                  <select 
+                  <select
                     className="w-full p-2 border rounded-lg"
                     value={selectedClass.id}
                     onChange={(e) => {
@@ -341,9 +354,8 @@ export default function TeacherDashboard() {
                             <p className="text-sm text-muted-foreground">{report.period}</p>
                             <p className="text-2xl font-bold">{report.attendance}%</p>
                           </div>
-                          <div className={`p-2 rounded-full ${
-                            report.trend === "up" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
-                          }`}>
+                          <div className={`p-2 rounded-full ${report.trend === "up" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
+                            }`}>
                             <TrendingUp className={`h-4 w-4 ${report.trend === "down" ? "rotate-180" : ""}`} />
                           </div>
                         </div>
@@ -481,7 +493,7 @@ export default function TeacherDashboard() {
                         <div className="flex items-center gap-4">
                           <div className="text-center">
                             <p className="text-sm text-muted-foreground">Attendance</p>
-                            <p className="font-semibold">85%</p>
+                            <p className="font-semibold">{attendanceStats.attendanceRate}%</p>
                           </div>
                           <div className="text-center">
                             <p className="text-sm text-muted-foreground">Performance</p>
@@ -501,16 +513,16 @@ export default function TeacherDashboard() {
                   <h3 className="font-semibold mb-2">Class Performance Summary</h3>
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
-                      <p className="text-2xl font-bold text-green-600">85%</p>
+                      <p className="text-2xl font-bold text-green-600">{attendanceStats.attendanceRate}%</p>
                       <p className="text-sm text-muted-foreground">Average Attendance</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-primary">{students.length}</p>
-                      <p className="text-sm text-muted-foreground">Active Students</p>
+                      <p className="text-2xl font-bold text-primary">{attendanceStats.totalStudents}</p>
+                      <p className="text-sm text-muted-foreground">Total Students</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-yellow-600">0</p>
-                      <p className="text-sm text-muted-foreground">At Risk</p>
+                      <p className="text-2xl font-bold text-yellow-600">{attendanceStats.totalClasses}</p>
+                      <p className="text-sm text-muted-foreground">My Classes</p>
                     </div>
                   </div>
                 </div>

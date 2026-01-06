@@ -27,7 +27,7 @@ import {
 import { useState, useEffect } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { fetchAllClasses, createClass, approveClassRequest, rejectClassRequest, getClassStats, type Class, type ClassFormData } from "@/lib/classUtils";
+import { fetchAllClasses, createClass, approveClassRequest, rejectClassRequest, getClassStats, type Class, type ClassFormData, enrollStudentInClass } from "@/lib/classUtils";
 
 interface User {
   id: string;
@@ -48,6 +48,8 @@ export default function AdminClasses() {
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [classes, setClasses] = useState<Class[]>([]);
+  const [enrolling, setEnrolling] = useState<string | null>(null);
+  const [selectedClassForEnrollment, setSelectedClassForEnrollment] = useState<string>("");
   const [formData, setFormData] = useState<ClassFormData>({
     name: '',
     subject: '',
@@ -173,6 +175,36 @@ export default function AdminClasses() {
     } catch (error) {
       console.error('Error rejecting class:', error);
       alert('Failed to reject class. Please try again.');
+    }
+  };
+
+  const handleEnrollStudent = async (studentId: string, studentUserId: string, studentName: string) => {
+    if (!selectedClassForEnrollment) {
+      alert('Please select a class first');
+      return;
+    }
+
+    try {
+      setEnrolling(studentId);
+      await enrollStudentInClass(selectedClassForEnrollment, studentId, studentUserId, studentName);
+      
+      // Update the class student count in local state
+      setClasses(prev => prev.map(cls => 
+        cls.id === selectedClassForEnrollment 
+          ? { ...cls, students: cls.students + 1 }
+          : cls
+      ));
+      
+      alert(`Successfully enrolled ${studentName} in the selected class!`);
+    } catch (error) {
+      console.error('Error enrolling student:', error);
+      if (error.message.includes('already enrolled')) {
+        alert('Student is already enrolled in this class');
+      } else {
+        alert('Failed to enroll student. Please try again.');
+      }
+    } finally {
+      setEnrolling(null);
     }
   };
 
@@ -604,11 +636,28 @@ export default function AdminClasses() {
                   </div>
 
                   <div className="space-y-3">
-                    <h3 className="font-semibold">Available Students</h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold">Available Students</h3>
+                      <div className="w-64">
+                        <Label htmlFor="class-select" className="text-sm font-medium">Select Class for Enrollment</Label>
+                        <Select value={selectedClassForEnrollment} onValueChange={setSelectedClassForEnrollment}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose a class..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {classes.filter(cls => cls.status === 'active').map((cls) => (
+                              <SelectItem key={cls.id} value={cls.id}>
+                                {cls.name} - {cls.subject} ({cls.students}/{cls.maxStudents})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                     {students.length === 0 ? (
                       <p className="text-center text-muted-foreground py-4">No students registered yet</p>
                     ) : (
-                      students.slice(0, 5).map((student) => (
+                      students.slice(0, 10).map((student) => (
                         <div key={student.id} className="flex items-center justify-between p-3 border rounded-lg">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
@@ -620,9 +669,14 @@ export default function AdminClasses() {
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline">
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleEnrollStudent(student.id, student.userId, student.displayName)}
+                              disabled={!selectedClassForEnrollment || enrolling === student.id}
+                            >
                               <UserPlus className="h-4 w-4 mr-1" />
-                              Enroll
+                              {enrolling === student.id ? 'Enrolling...' : 'Enroll'}
                             </Button>
                           </div>
                         </div>

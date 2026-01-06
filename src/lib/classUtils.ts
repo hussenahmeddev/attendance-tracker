@@ -167,3 +167,148 @@ export const getClassStats = (classes: Class[]) => {
     averageClassSize: classes.length > 0 ? Math.round(classes.reduce((acc, c) => acc + c.students, 0) / classes.length) : 0
   };
 };
+
+// Enrollment interfaces and functions
+export interface Enrollment {
+  id: string;
+  classId: string;
+  studentId: string;
+  studentUserId: string;
+  studentName: string;
+  enrolledAt: string;
+  status: 'active' | 'inactive';
+}
+
+export interface StudentInfo {
+  id: string;
+  userId: string;
+  displayName: string;
+  email: string;
+  role: string;
+}
+
+/**
+ * Get students enrolled in a specific class
+ */
+export const getStudentsForClass = async (classId: string): Promise<StudentInfo[]> => {
+  try {
+    // Get enrollments for this class
+    const enrollmentsCollection = collection(db, 'enrollments');
+    const enrollmentsQuery = query(
+      enrollmentsCollection, 
+      where('classId', '==', classId),
+      where('status', '==', 'active')
+    );
+    const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
+    
+    if (enrollmentsSnapshot.empty) {
+      console.log(`No enrollments found for class ${classId}`);
+      return [];
+    }
+
+    // Get student IDs from enrollments
+    const studentIds = enrollmentsSnapshot.docs.map(doc => doc.data().studentId);
+    
+    // Fetch student details
+    const usersCollection = collection(db, 'users');
+    const students: StudentInfo[] = [];
+    
+    // Get all students first, then filter by enrolled IDs
+    const allStudentsSnapshot = await getDocs(usersCollection);
+    
+    for (const studentDoc of allStudentsSnapshot.docs) {
+      if (studentIds.includes(studentDoc.id)) {
+        const studentData = studentDoc.data();
+        students.push({
+          id: studentDoc.id,
+          userId: studentData.userId || 'N/A',
+          displayName: studentData.displayName || 'Unknown',
+          email: studentData.email || 'No email',
+          role: studentData.role || 'student'
+        });
+      }
+    }
+    
+    return students;
+  } catch (error) {
+    console.error('Error fetching students for class:', error);
+    return [];
+  }
+};
+
+/**
+ * Enroll a student in a class
+ */
+export const enrollStudentInClass = async (classId: string, studentId: string, studentUserId: string, studentName: string): Promise<void> => {
+  try {
+    // Check if already enrolled
+    const enrollmentsCollection = collection(db, 'enrollments');
+    const existingQuery = query(
+      enrollmentsCollection,
+      where('classId', '==', classId),
+      where('studentId', '==', studentId),
+      where('status', '==', 'active')
+    );
+    const existingSnapshot = await getDocs(existingQuery);
+    
+    if (!existingSnapshot.empty) {
+      throw new Error('Student is already enrolled in this class');
+    }
+
+    // Create enrollment record
+    const enrollment: Omit<Enrollment, 'id'> = {
+      classId,
+      studentId,
+      studentUserId,
+      studentName,
+      enrolledAt: new Date().toISOString(),
+      status: 'active'
+    };
+
+    await addDoc(enrollmentsCollection, enrollment);
+    
+    // Update class student count
+    const classRef = doc(db, 'classes', classId);
+    const classesCollection = collection(db, 'classes');
+    const classQuery = query(classesCollection, where('__name__', '==', classId));
+    const classSnapshot = await getDocs(classQuery);
+    
+    if (!classSnapshot.empty) {
+      const currentStudents = classSnapshot.docs[0].data().students || 0;
+      await updateDoc(classRef, { students: currentStudents + 1 });
+    }
+  } catch (error) {
+    console.error('Error enrolling student:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all students not enrolled in a specific class
+ */
+export const getAvailableStudentsForClass = async (classId: string): Promise<StudentInfo[]> => {
+  try {
+    // Get all students
+    const usersCollection = collection(db, 'users');
+    const studentsQuery = query(usersCollection, where('role', '==', 'student'));
+    const studentsSnapshot = await getDocs(studentsQuery);
+    
+    const allStudents = studentsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      userId: doc.data().userId || 'N/A',
+      displayName: doc.data().displayName || 'Unknown',
+      email: doc.data().email || 'No email',
+      role: doc.data().role || 'student'
+    }));
+
+    // Get enrolled students
+    const enrolledStudents = await getStudentsForClass(classId);
+    const enrolledIds = new Set(enrolledStudents.map(s => s.id));
+    
+    // Return students not enrolled
+    return allStudents.filter(student => !enrolledIds.has(student.id));
+  } catch (error) {
+    console.error('Error fetching available students:', error);
+    return [];
+  }
+};

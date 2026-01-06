@@ -25,20 +25,22 @@ export function DashboardLayout({
   pageDescription,
 }: DashboardLayoutProps) {
   const { userData } = useAuth();
-  
+
   // Use auth context data as fallback
   const displayName = userName || userData?.displayName || "User";
   const email = userEmail || userData?.email || "";
 
+
+
   return (
-    <div className="min-h-screen bg-background">
-      <DashboardSidebar 
-        role={role} 
-        userName={displayName} 
-        userEmail={email} 
+    <div className="min-h-screen bg-background flex">
+      <DashboardSidebar
+        role={role}
+        userName={displayName}
+        userEmail={email}
       />
-      
-      <div className="pl-64 transition-all duration-300">
+
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6">
           <div className="flex items-center gap-4">
@@ -51,7 +53,7 @@ export function DashboardLayout({
               </div>
             )}
           </div>
-          
+
           <div className="flex items-center gap-4">
             <div className="relative hidden md:block">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -67,7 +69,8 @@ export function DashboardLayout({
         </header>
 
         {/* Main Content */}
-        <main className="p-6">
+        <main className="flex-1 p-6 overflow-auto">
+
           {children}
         </main>
       </div>

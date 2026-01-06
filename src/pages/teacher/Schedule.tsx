@@ -62,21 +62,7 @@ export default function TeacherSchedule() {
     fetchUsers();
   }, []);
 
-  // Generate classes based on real data - empty until proper class assignment system
-  const students = users.filter(u => u.role === 'student');
-  
-  const classes: ClassSchedule[] = students.length > 0 ? [
-    {
-      id: "1",
-      name: "Sample Class",
-      subject: "General",
-      grade: "All",
-      students: students.length,
-      schedule: "To be scheduled",
-      room: "TBD",
-      status: "active"
-    }
-  ] : [];
+  const classes: ClassSchedule[] = [];
 
   return (
     <DashboardLayout
@@ -86,7 +72,7 @@ export default function TeacherSchedule() {
     >
       <div className="space-y-6">
         <UserProfile />
-        
+
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">

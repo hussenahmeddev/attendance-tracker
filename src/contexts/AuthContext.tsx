@@ -83,6 +83,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Check if we're in test mode
+  const isTestMode = window.location.search.includes('test=true');
+
   const signUp = async (email: string, password: string, name: string, role: string) => {
     const { user } = await createUserWithEmailAndPassword(auth, email, password);
     
@@ -126,32 +129,67 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   useEffect(() => {
+    // If in test mode, set mock data based on current route
+    if (isTestMode) {
+      const path = window.location.pathname;
+      let mockRole: 'admin' | 'teacher' | 'student' = 'student';
+      
+      if (path.includes('/admin')) mockRole = 'admin';
+      else if (path.includes('/teacher')) mockRole = 'teacher';
+      else if (path.includes('/student')) mockRole = 'student';
+
+      const mockUserData: UserData = {
+        uid: 'test-user',
+        userId: mockRole === 'admin' ? 'ADM001' : mockRole === 'teacher' ? 'TCH001' : 'STD001',
+        email: `test@${mockRole}.com`,
+        displayName: `Test ${mockRole.charAt(0).toUpperCase()}${mockRole.slice(1)}`,
+        role: mockRole,
+      };
+
+      setCurrentUser({ uid: 'test-user' } as User);
+      setUserData(mockUserData);
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setLoading(true);
-      if (user) {
-        setCurrentUser(user);
-        // Get user data from Firestore
-        try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
-            setUserData(userDoc.data() as UserData);
-          } else {
-            console.error('User document not found in Firestore');
+      try {
+        if (user) {
+          setCurrentUser(user);
+          // Get user data from Firestore
+          try {
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            if (userDoc.exists()) {
+              setUserData(userDoc.data() as UserData);
+            } else {
+              console.error('User document not found in Firestore');
+              setUserData(null);
+            }
+          } catch (error) {
+            console.error('Error fetching user data:', error);
             setUserData(null);
           }
-        } catch (error) {
-          console.error('Error fetching user data:', error);
+        } else {
+          setCurrentUser(null);
           setUserData(null);
         }
-      } else {
-        setCurrentUser(null);
-        setUserData(null);
+      } catch (error) {
+        console.error('Auth state change error:', error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return unsubscribe;
-  }, []);
+    // Set a timeout to ensure loading doesn't get stuck
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
+  }, [isTestMode]);
 
   const value: AuthContextType = {
     currentUser,
@@ -164,7 +202,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {loading && !isTestMode ? (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 };

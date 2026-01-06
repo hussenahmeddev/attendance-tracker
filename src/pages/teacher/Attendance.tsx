@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ClipboardCheck, Users, CheckCircle2, XCircle, AlertCircle, Calendar, Save, UserCheck } from "lucide-react";
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-import { fetchTeacherClasses, type Class } from "@/lib/classUtils";
-import { 
-  createAttendanceSession, 
-  markAttendance, 
+import { fetchTeacherClasses, type Class, getStudentsForClass, type StudentInfo } from "@/lib/classUtils";
+import { setupInitialEnrollments, checkEnrollmentsExist } from "@/lib/enrollmentUtils";
+import {
+  createAttendanceSession,
+  markAttendance,
   completeAttendanceSession,
   fetchAttendanceByDateAndClass,
   type AttendanceStatus,
@@ -47,32 +48,12 @@ export default function TeacherAttendance() {
   useEffect(() => {
     const fetchData = async () => {
       if (!userData?.userId) return;
-      
+
       try {
         // Fetch teacher's classes
         const teacherClasses = await fetchTeacherClasses(userData.userId);
         setClasses(teacherClasses.filter(c => c.status === 'active'));
-        
-        // Fetch all students
-        const usersCollection = collection(db, 'users');
-        const studentsQuery = query(usersCollection, where('role', '==', 'student'));
-        const studentsSnapshot = await getDocs(studentsQuery);
-        
-        const studentsData = studentsSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            userId: data.userId || 'N/A',
-            displayName: data.displayName || 'Unknown',
-            email: data.email || 'No email',
-            role: data.role || 'student',
-            status: 'present' as AttendanceStatus,
-            createdAt: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'
-          } as Student;
-        });
-        
-        setStudents(studentsData);
-        
+
         // Set first class as default if available
         if (teacherClasses.length > 0) {
           setSelectedClass(teacherClasses[0]);
@@ -87,15 +68,61 @@ export default function TeacherAttendance() {
     fetchData();
   }, [userData]);
 
+  // Fetch students when class changes
+  useEffect(() => {
+    const fetchClassStudents = async () => {
+      if (!selectedClass) {
+        setStudents([]);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        console.log('Fetching students for class:', selectedClass.id);
+
+        // Check if enrollments exist, if not set them up
+        const enrollmentsExist = await checkEnrollmentsExist();
+        if (!enrollmentsExist) {
+          console.log('No enrollments found, setting up initial enrollments...');
+          await setupInitialEnrollments();
+        }
+
+        // Get students enrolled in the selected class
+        const classStudents = await getStudentsForClass(selectedClass.id);
+        console.log('Found enrolled students:', classStudents.length);
+
+        if (classStudents.length === 0) {
+          console.log('No students enrolled in this class. Please enroll students first.');
+        }
+
+        const studentsData = classStudents.map(student => ({
+          ...student,
+          status: 'present' as AttendanceStatus,
+          createdAt: new Date().toLocaleDateString(),
+          attendanceId: undefined
+        }));
+
+        setStudents(studentsData);
+      } catch (error) {
+        console.error('Error fetching class students:', error);
+        setStudents([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchClassStudents();
+  }, [selectedClass]);
+
   // Fetch existing attendance when class or date changes
   useEffect(() => {
     const fetchExistingAttendance = async () => {
       if (!selectedClass) return;
-      
+
       try {
         const records = await fetchAttendanceByDateAndClass(selectedDate, selectedClass.id);
         setExistingAttendance(records);
-        
+
         // Update student statuses based on existing records
         setStudents(prev => prev.map(student => {
           const existingRecord = records.find(r => r.studentId === student.userId);
@@ -114,7 +141,7 @@ export default function TeacherAttendance() {
   }, [selectedClass, selectedDate]);
 
   const handleAttendanceChange = (studentId: string, status: AttendanceStatus) => {
-    setStudents(prev => 
+    setStudents(prev =>
       prev.map(s => s.userId === studentId ? { ...s, status } : s)
     );
   };
@@ -136,36 +163,19 @@ export default function TeacherAttendance() {
 
     setSaving(true);
     try {
-      console.log('=== ATTENDANCE SAVE DEBUG ===');
-      console.log('Selected class:', selectedClass);
-      console.log('User data:', userData);
-      console.log('Students count:', students.length);
+
       console.log('Selected date:', selectedDate);
 
-      // Test Firestore connection first
-      console.log('Testing Firestore connection...');
-      const testDoc = {
-        test: true,
-        timestamp: new Date().toISOString(),
-        userId: userData.userId
-      };
-      
-      try {
-        const testRef = await addDoc(collection(db, 'test'), testDoc);
-        console.log('✓ Firestore connection test successful, doc ID:', testRef.id);
-      } catch (testError) {
-        console.error('✗ Firestore connection test failed:', testError);
-        throw new Error(`Firestore connection failed: ${testError.message}`);
-      }
+
 
       // Simple attendance save without sessions for now
       console.log('Saving attendance records directly...');
       const savedCount = 0;
-      
+
       for (let i = 0; i < students.length; i++) {
         const student = students[i];
         console.log(`Saving ${i + 1}/${students.length}: ${student.displayName} - ${student.status}`);
-        
+
         const attendanceRecord = {
           classId: selectedClass.id,
           className: selectedClass.name,
@@ -190,10 +200,10 @@ export default function TeacherAttendance() {
 
       console.log('=== ATTENDANCE SAVE COMPLETE ===');
       alert(`Attendance saved successfully for ${selectedClass.name}! Saved ${students.length} records.`);
-      
+
       // Refresh the page data
       window.location.reload();
-      
+
     } catch (error) {
       console.error('=== ATTENDANCE SAVE ERROR ===');
       console.error('Full error:', error);
@@ -215,7 +225,7 @@ export default function TeacherAttendance() {
     >
       <div className="space-y-6">
         <UserProfile />
-        
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -237,8 +247,8 @@ export default function TeacherAttendance() {
                 <div className="grid gap-4 md:grid-cols-2 mb-6">
                   <div className="space-y-2">
                     <Label htmlFor="class-select">Select Class *</Label>
-                    <Select 
-                      value={selectedClass?.id || ''} 
+                    <Select
+                      value={selectedClass?.id || ''}
                       onValueChange={(value) => {
                         const foundClass = classes.find(c => c.id === value);
                         setSelectedClass(foundClass || null);
@@ -261,7 +271,7 @@ export default function TeacherAttendance() {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="date-select">Date</Label>
                     <Input
@@ -344,8 +354,9 @@ export default function TeacherAttendance() {
                       {students.length === 0 ? (
                         <div className="text-center py-8">
                           <Users className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                          <p className="text-muted-foreground">No students found</p>
-                          <p className="text-sm text-muted-foreground">Students will appear here once they register</p>
+                          <p className="text-muted-foreground">No students enrolled in this class</p>
+                          <p className="text-sm text-muted-foreground">Students need to be enrolled in this class to take attendance</p>
+                          <p className="text-xs text-muted-foreground mt-2">Contact your administrator to enroll students</p>
                         </div>
                       ) : (
                         students.map((student) => (

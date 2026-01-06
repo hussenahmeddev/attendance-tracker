@@ -7,6 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { getStudentsForClass } from "@/lib/classUtils";
+import { calculateStudentAttendanceSummary, fetchAllAttendance } from "@/lib/attendanceUtils";
 import {
   BookOpen,
   Calendar,
@@ -33,11 +35,20 @@ export default function StudentDashboard() {
   const { userData, loading } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [studentStats, setStudentStats] = useState({
+    classesToday: 0,
+    attendanceRate: 0,
+    totalClasses: 0,
+    pendingRequests: 0
+  });
 
-  // Fetch users from Firebase
+  // Fetch student data and statistics
   useEffect(() => {
-    const fetchUsers = async () => {
+    const fetchData = async () => {
+      if (!userData?.userId) return;
+
       try {
+        // Fetch users
         const usersCollection = collection(db, 'users');
         const usersSnapshot = await getDocs(usersCollection);
         const usersData = usersSnapshot.docs.map(doc => {
@@ -53,15 +64,31 @@ export default function StudentDashboard() {
           } as User;
         });
         setUsers(usersData);
+
+        // Set default stats for now to make page visible
+        setStudentStats({
+          classesToday: 0,
+          attendanceRate: 0,
+          totalClasses: 0,
+          pendingRequests: 0
+        });
+
       } catch (error) {
-        console.error('Error fetching users:', error);
+        console.error('Error fetching student data:', error);
+        // Set default values if anything fails
+        setStudentStats({
+          classesToday: 0,
+          attendanceRate: 0,
+          totalClasses: 0,
+          pendingRequests: 0
+        });
       } finally {
         setDataLoading(false);
       }
     };
 
-    fetchUsers();
-  }, []);
+    fetchData();
+  }, [userData]);
 
   if (loading || dataLoading) {
     return (
@@ -90,26 +117,26 @@ export default function StudentDashboard() {
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">0</div>
+              <div className="text-2xl font-bold text-blue-600">{studentStats.classesToday}</div>
               <p className="text-sm text-muted-foreground">Classes Today</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">0%</div>
+              <div className="text-2xl font-bold text-green-600">{studentStats.attendanceRate}%</div>
               <p className="text-sm text-muted-foreground">Attendance Rate</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">0</div>
+              <div className="text-2xl font-bold text-purple-600">{studentStats.pendingRequests}</div>
               <p className="text-sm text-muted-foreground">Pending Requests</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">0</div>
-              <p className="text-sm text-muted-foreground">Notifications</p>
+              <div className="text-2xl font-bold text-orange-600">{studentStats.totalClasses}</div>
+              <p className="text-sm text-muted-foreground">Total Classes</p>
             </CardContent>
           </Card>
         </div>
@@ -225,7 +252,7 @@ export default function StudentDashboard() {
                   </p>
                 </div>
               </div>
-              
+
               <div className="text-center py-4 text-sm text-muted-foreground">
                 More activities will appear as you use the system
               </div>

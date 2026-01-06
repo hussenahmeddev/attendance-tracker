@@ -97,7 +97,7 @@ export function DashboardSidebar({ role, userName = "User", userEmail = "" }: Da
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 flex h-screen flex-col bg-sidebar transition-all duration-300",
+        "flex h-screen flex-col bg-sidebar border-r border-sidebar-border transition-all duration-300 shrink-0",
         collapsed ? "w-20" : "w-64"
       )}
     >
@@ -121,10 +121,7 @@ export function DashboardSidebar({ role, userName = "User", userEmail = "" }: Da
         <Button
           variant="ghost"
           size="icon"
-          className={cn(
-            "h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent",
-            collapsed && "absolute -right-3 top-6 rounded-full bg-sidebar border border-sidebar-border"
-          )}
+          className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent"
           onClick={() => setCollapsed(!collapsed)}
         >
           {collapsed ? (
