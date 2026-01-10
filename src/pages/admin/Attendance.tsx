@@ -34,6 +34,7 @@ import {
   type AttendanceRecord,
   type StudentAttendanceSummary
 } from "@/lib/attendanceUtils";
+import { isLowAttendance, STATUS_COLORS } from "@/config/constants";
 
 interface User {
   id: string;
@@ -59,7 +60,7 @@ export default function AdminAttendance() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [classFilter, setClassFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("today");
+  const [dateFilter, setDateFilter] = useState("all");
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [attendanceStats, setAttendanceStats] = useState<any>(null);
   const [lowAttendanceStudents, setLowAttendanceStudents] = useState<StudentAttendanceSummary[]>([]);
@@ -123,6 +124,7 @@ export default function AdminAttendance() {
         startDate = monthAgo.toISOString().split('T')[0];
         endDate = today.toISOString().split('T')[0];
       }
+      // For 'all' option, leave startDate and endDate undefined to fetch all records
 
       // Fetch attendance records
       const records = await fetchAllAttendance(startDate, endDate);
@@ -136,7 +138,7 @@ export default function AdminAttendance() {
       const trends = await getAttendanceTrends(7);
       setAttendanceTrends(trends);
 
-      // Find students with low attendance
+      // Find students with low attendance (always use all-time data for this)
       const students = users.filter(u => u.role === 'student');
       const lowAttendancePromises = students.map(async (student) => {
         const summary = await calculateStudentAttendanceSummary(student.userId);
@@ -144,7 +146,7 @@ export default function AdminAttendance() {
       });
       
       const summaries = await Promise.all(lowAttendancePromises);
-      const lowAttendance = summaries.filter(s => s.attendancePercentage < 80 && s.totalClasses > 0);
+      const lowAttendance = summaries.filter(s => isLowAttendance(s.attendancePercentage) && s.totalClasses > 0);
       setLowAttendanceStudents(lowAttendance);
 
     } catch (error) {
@@ -193,11 +195,13 @@ export default function AdminAttendance() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'present':
-        return <Badge className="bg-green-100 text-green-800">Present</Badge>;
+        return <Badge className={STATUS_COLORS.PRESENT}>Present</Badge>;
       case 'absent':
-        return <Badge className="bg-red-100 text-red-800">Absent</Badge>;
+        return <Badge className={STATUS_COLORS.ABSENT}>Absent</Badge>;
       case 'late':
-        return <Badge className="bg-yellow-100 text-yellow-800">Late</Badge>;
+        return <Badge className={STATUS_COLORS.LATE}>Late</Badge>;
+      case 'excused':
+        return <Badge className={STATUS_COLORS.EXCUSED}>Excused</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
@@ -267,6 +271,7 @@ export default function AdminAttendance() {
                       <SelectValue placeholder="Select time period" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="all">All Time</SelectItem>
                       <SelectItem value="today">Today</SelectItem>
                       <SelectItem value="week">This Week</SelectItem>
                       <SelectItem value="month">This Month</SelectItem>

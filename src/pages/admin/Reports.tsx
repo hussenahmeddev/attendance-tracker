@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  BarChart3, 
-  FileText, 
-  Download, 
+import {
+  BarChart3,
+  FileText,
+  Download,
   Calendar,
   TrendingUp,
   Users,
@@ -22,6 +22,9 @@ import {
   Play,
   Pause
 } from "lucide-react";
+import { STATUS_COLORS } from "@/config/constants";
+import { useReportGenerator } from "@/hooks/useReportGenerator";
+import { useToast } from "@/components/ui/use-toast";
 import { useState, useEffect } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -37,6 +40,8 @@ interface User {
 }
 
 export default function AdminReports() {
+  const { generateReport, isGenerating, error } = useReportGenerator();
+  const { toast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [reportType, setReportType] = useState("attendance");
@@ -79,10 +84,10 @@ export default function AdminReports() {
   const admins = users.filter(u => u.role === 'admin');
 
   const reports = [
-    { 
-      id: "1", 
-      name: "System Status Report", 
-      type: "system", 
+    {
+      id: "1",
+      name: "System Status Report",
+      type: "system",
       dateRange: "Current Data",
       status: "completed",
       createdAt: new Date().toLocaleDateString(),
@@ -92,10 +97,10 @@ export default function AdminReports() {
   ];
 
   const scheduledReports = [
-    { 
-      id: "1", 
-      name: "Daily System Summary", 
-      frequency: "Daily", 
+    {
+      id: "1",
+      name: "Daily System Summary",
+      frequency: "Daily",
       nextRun: "Tomorrow 8:00 AM",
       status: "active",
       recipients: "admin@school.edu"
@@ -105,11 +110,11 @@ export default function AdminReports() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
-        return <Badge className="bg-green-100 text-green-800">Completed</Badge>;
+        return <Badge className={STATUS_COLORS.COMPLETED}>Completed</Badge>;
       case "processing":
-        return <Badge className="bg-yellow-100 text-yellow-800">Processing</Badge>;
+        return <Badge className={STATUS_COLORS.PROCESSING}>Processing</Badge>;
       case "failed":
-        return <Badge className="bg-red-100 text-red-800">Failed</Badge>;
+        return <Badge className={STATUS_COLORS.FAILED}>Failed</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
@@ -213,8 +218,8 @@ export default function AdminReports() {
                             <div className="text-right">
                               <Badge className={
                                 user.role === 'admin' ? 'bg-red-50 text-red-700' :
-                                user.role === 'teacher' ? 'bg-blue-50 text-blue-700' :
-                                'bg-green-50 text-green-700'
+                                  user.role === 'teacher' ? 'bg-blue-50 text-blue-700' :
+                                    'bg-green-50 text-green-700'
                               }>
                                 {user.role}
                               </Badge>
@@ -249,10 +254,10 @@ export default function AdminReports() {
                           <SelectValue placeholder="Select report type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="users">User Summary</SelectItem>
+                          <SelectItem value="system">System Overview (Summary)</SelectItem>
+                          <SelectItem value="users">User List (Not Impl)</SelectItem>
                           <SelectItem value="students">Student Report</SelectItem>
-                          <SelectItem value="teachers">Teacher Report</SelectItem>
-                          <SelectItem value="system">System Overview</SelectItem>
+                          {/* <SelectItem value="teachers">Teacher Report</SelectItem> */}
                         </SelectContent>
                       </Select>
                     </div>
@@ -271,6 +276,22 @@ export default function AdminReports() {
                         </SelectContent>
                       </Select>
                     </div>
+                    {/* Student Selector if type is student - Simplified for dynamic loading */}
+                    {reportType === 'students' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="studentSelect">Select Student</Label>
+                        <Select value={selectedClass} onValueChange={setSelectedClass}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a student" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[200px]">
+                            {students.map(s => (
+                              <SelectItem key={s.id} value={s.userId}>{s.displayName}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-4">
                     <div className="space-y-2">
@@ -281,7 +302,6 @@ export default function AdminReports() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="pdf">PDF Document</SelectItem>
-                          <SelectItem value="excel">Excel Spreadsheet</SelectItem>
                           <SelectItem value="csv">CSV File</SelectItem>
                           <SelectItem value="json">JSON Data</SelectItem>
                         </SelectContent>
@@ -293,18 +313,60 @@ export default function AdminReports() {
                         id="email"
                         type="email"
                         placeholder="admin@school.edu, teacher@school.edu"
+                        disabled
                       />
+                      <p className='text-xs text-muted-foreground'>Email feature coming soon</p>
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-2 mt-6">
-                  <Button className="flex-1">
-                    <FileText className="h-4 w-4 mr-2" />
-                    Generate Report
+                  <Button
+                    className="flex-1"
+                    onClick={async () => {
+                      const targetId = reportType === 'students' ? selectedClass : undefined;
+                      // Map report type string to hook type
+                      let hookType: any = 'summary';
+                      if (reportType === 'system') hookType = 'system';
+                      if (reportType === 'students') hookType = 'student';
+
+                      const success = await generateReport({
+                        type: hookType,
+                        format: format as any,
+                        dateRange: dateRange as any,
+                        targetId: targetId,
+                        title: `Admin ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} Report`
+                      });
+
+                      if (success) {
+                        toast({
+                          title: "Report Generated",
+                          description: "Your report has been downloaded successfully.",
+                        });
+                      } else {
+                        toast({
+                          title: "Generation Failed",
+                          description: error || "Could not generate report. Try different criteria.",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                    disabled={isGenerating}
+                  >
+                    {isGenerating ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="h-4 w-4 mr-2" />
+                        Generate Report
+                      </>
+                    )}
                   </Button>
-                  <Button variant="outline">
+                  <Button variant="outline" disabled>
                     <Eye className="h-4 w-4 mr-2" />
-                    Preview
+                    Preview (Coming Soon)
                   </Button>
                 </div>
               </CardContent>

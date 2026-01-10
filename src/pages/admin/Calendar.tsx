@@ -1,3 +1,4 @@
+import { CALENDAR_COLORS } from "@/config/constants";
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { UserProfile } from "@/components/UserProfile";
@@ -107,17 +108,17 @@ export default function AdminCalendar() {
   const getEventTypeColor = (type: string) => {
     switch (type) {
       case 'holiday':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return CALENDAR_COLORS.HOLIDAY;
       case 'exam':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
+        return CALENDAR_COLORS.EXAM;
       case 'event':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return CALENDAR_COLORS.EVENT;
       case 'break':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return CALENDAR_COLORS.BREAK;
       case 'system':
-        return 'bg-purple-100 text-purple-800 border-purple-200';
+        return CALENDAR_COLORS.SYSTEM;
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return CALENDAR_COLORS.DEFAULT;
     }
   };
 

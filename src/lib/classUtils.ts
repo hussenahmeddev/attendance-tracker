@@ -195,12 +195,12 @@ export const getStudentsForClass = async (classId: string): Promise<StudentInfo[
     // Get enrollments for this class
     const enrollmentsCollection = collection(db, 'enrollments');
     const enrollmentsQuery = query(
-      enrollmentsCollection, 
+      enrollmentsCollection,
       where('classId', '==', classId),
       where('status', '==', 'active')
     );
     const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
-    
+
     if (enrollmentsSnapshot.empty) {
       console.log(`No enrollments found for class ${classId}`);
       return [];
@@ -208,14 +208,14 @@ export const getStudentsForClass = async (classId: string): Promise<StudentInfo[
 
     // Get student IDs from enrollments
     const studentIds = enrollmentsSnapshot.docs.map(doc => doc.data().studentId);
-    
+
     // Fetch student details
     const usersCollection = collection(db, 'users');
     const students: StudentInfo[] = [];
-    
+
     // Get all students first, then filter by enrolled IDs
     const allStudentsSnapshot = await getDocs(usersCollection);
-    
+
     for (const studentDoc of allStudentsSnapshot.docs) {
       if (studentIds.includes(studentDoc.id)) {
         const studentData = studentDoc.data();
@@ -228,7 +228,7 @@ export const getStudentsForClass = async (classId: string): Promise<StudentInfo[
         });
       }
     }
-    
+
     return students;
   } catch (error) {
     console.error('Error fetching students for class:', error);
@@ -250,7 +250,7 @@ export const enrollStudentInClass = async (classId: string, studentId: string, s
       where('status', '==', 'active')
     );
     const existingSnapshot = await getDocs(existingQuery);
-    
+
     if (!existingSnapshot.empty) {
       throw new Error('Student is already enrolled in this class');
     }
@@ -266,13 +266,13 @@ export const enrollStudentInClass = async (classId: string, studentId: string, s
     };
 
     await addDoc(enrollmentsCollection, enrollment);
-    
+
     // Update class student count
     const classRef = doc(db, 'classes', classId);
     const classesCollection = collection(db, 'classes');
     const classQuery = query(classesCollection, where('__name__', '==', classId));
     const classSnapshot = await getDocs(classQuery);
-    
+
     if (!classSnapshot.empty) {
       const currentStudents = classSnapshot.docs[0].data().students || 0;
       await updateDoc(classRef, { students: currentStudents + 1 });
@@ -292,7 +292,7 @@ export const getAvailableStudentsForClass = async (classId: string): Promise<Stu
     const usersCollection = collection(db, 'users');
     const studentsQuery = query(usersCollection, where('role', '==', 'student'));
     const studentsSnapshot = await getDocs(studentsQuery);
-    
+
     const allStudents = studentsSnapshot.docs.map(doc => ({
       id: doc.id,
       userId: doc.data().userId || 'N/A',
@@ -304,11 +304,101 @@ export const getAvailableStudentsForClass = async (classId: string): Promise<Stu
     // Get enrolled students
     const enrolledStudents = await getStudentsForClass(classId);
     const enrolledIds = new Set(enrolledStudents.map(s => s.id));
-    
+
     // Return students not enrolled
     return allStudents.filter(student => !enrolledIds.has(student.id));
   } catch (error) {
     console.error('Error fetching available students:', error);
+    return [];
+  }
+};
+
+/**
+ * Unenroll a student from a class
+ */
+export const unenrollStudent = async (classId: string, studentId: string): Promise<void> => {
+  try {
+    // 1. Find the enrollment record
+    const enrollmentsCollection = collection(db, 'enrollments');
+    const q = query(
+      enrollmentsCollection,
+      where('classId', '==', classId),
+      where('studentId', '==', studentId),
+      where('status', '==', 'active')
+    );
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      throw new Error('Enrollment not found');
+    }
+
+    // 2. Delete or update status
+    // Deleting for now to keep it simple
+    for (const doc of snapshot.docs) {
+      await deleteDoc(doc.ref);
+    }
+
+    // 3. Update class student count
+    const classRef = doc(db, 'classes', classId);
+    const classDoc = await getDocs(query(collection(db, 'classes'), where('__name__', '==', classId)));
+
+    if (!classDoc.empty) {
+      const currentStudents = classDoc.docs[0].data().students || 0;
+      await updateDoc(classRef, { students: Math.max(0, currentStudents - 1) });
+    }
+
+  } catch (error) {
+    console.error('Error unenrolling student:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all classes a student is enrolled in
+ */
+export const getEnrolledClassesForStudent = async (studentUserId: string): Promise<Class[]> => {
+  try {
+    // 1. Get enrollments for this student
+    const enrollmentsCollection = collection(db, 'enrollments');
+    const enrollmentsQuery = query(
+      enrollmentsCollection,
+      where('studentUserId', '==', studentUserId),
+      where('status', '==', 'active')
+    );
+    const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
+
+    if (enrollmentsSnapshot.empty) {
+      return [];
+    }
+
+    const classIds = enrollmentsSnapshot.docs.map(doc => doc.data().classId);
+
+    // 2. Fetch class details
+    const classesCollection = collection(db, 'classes');
+    const classesSnapshot = await getDocs(classesCollection);
+
+    return classesSnapshot.docs
+      .filter(doc => classIds.includes(doc.id))
+      .map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name || 'Unnamed Class',
+          subject: data.subject || 'General',
+          grade: data.grade || 'All',
+          teacher: data.teacher || 'Unassigned',
+          teacherId: data.teacherId || 'N/A',
+          students: data.students || 0,
+          maxStudents: data.maxStudents || 30,
+          schedule: data.schedule || 'To be scheduled',
+          room: data.room || 'TBD',
+          status: data.status || 'active',
+          createdAt: data.createdAt || new Date().toISOString(),
+          requestedAt: data.requestedAt
+        } as Class;
+      });
+  } catch (error) {
+    console.error('Error fetching student classes:', error);
     return [];
   }
 };

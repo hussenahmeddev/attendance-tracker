@@ -26,6 +26,27 @@ export function DashboardLayout({
 }: DashboardLayoutProps) {
   const { userData } = useAuth();
 
+  // Role-based styling
+  const roleStyles = {
+    admin: {
+      bg: "bg-red-50/30",
+      border: "border-red-200",
+      indicator: "bg-red-500"
+    },
+    teacher: {
+      bg: "bg-blue-50/30",
+      border: "border-blue-200",
+      indicator: "bg-blue-500"
+    },
+    student: {
+      bg: "bg-green-50/30",
+      border: "border-green-200",
+      indicator: "bg-green-500"
+    }
+  };
+
+  const currentStyle = roleStyles[role] || roleStyles.student;
+
   // Use auth context data as fallback
   const displayName = userName || userData?.displayName || "User";
   const email = userEmail || userData?.email || "";
@@ -33,7 +54,7 @@ export function DashboardLayout({
 
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className={`min-h-screen flex ${currentStyle.bg}`}>
       <DashboardSidebar
         role={role}
         userName={displayName}
@@ -42,8 +63,9 @@ export function DashboardLayout({
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6">
+        <header className={`sticky top-0 z-30 flex h-16 items-center justify-between border-b ${currentStyle.border} bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6`}>
           <div className="flex items-center gap-4">
+            <div className={`w-2 h-8 rounded-full ${currentStyle.indicator} mr-2`} />
             {pageTitle && (
               <div>
                 <h1 className="text-xl font-semibold">{pageTitle}</h1>

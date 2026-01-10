@@ -7,8 +7,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { getStudentsForClass } from "@/lib/classUtils";
-import { calculateStudentAttendanceSummary, fetchAllAttendance } from "@/lib/attendanceUtils";
+import { getEnrolledClassesForStudent, type Class } from "@/lib/classUtils";
+import { calculateStudentAttendanceSummary } from "@/lib/attendanceUtils";
+import { DEFAULT_VALUES } from "@/config/constants";
 import {
   BookOpen,
   Calendar,
@@ -16,8 +17,6 @@ import {
   TrendingUp,
   Users,
   CheckCircle2,
-  XCircle,
-  AlertTriangle,
   FileText
 } from "lucide-react";
 
@@ -34,6 +33,8 @@ interface User {
 export default function StudentDashboard() {
   const { userData, loading } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [enrolledClasses, setEnrolledClasses] = useState<Class[]>([]);
+  const [classesToday, setClassesToday] = useState<Class[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [studentStats, setStudentStats] = useState({
     classesToday: 0,
@@ -48,40 +49,53 @@ export default function StudentDashboard() {
       if (!userData?.userId) return;
 
       try {
-        // Fetch users
+        // Fetch users for system status
         const usersCollection = collection(db, 'users');
         const usersSnapshot = await getDocs(usersCollection);
-        const usersData = usersSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            userId: data.userId || 'N/A',
-            displayName: data.displayName || 'Unknown',
-            email: data.email || 'No email',
-            role: data.role || 'student',
-            status: data.status || 'active',
-            createdAt: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'
-          } as User;
-        });
+        const usersData = usersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          userId: doc.data().userId || 'N/A',
+          displayName: doc.data().displayName || 'Unknown',
+          email: doc.data().email || 'No email',
+          role: doc.data().role || 'student',
+          status: doc.data().status || 'active',
+          createdAt: doc.data().createdAt ? new Date(doc.data().createdAt).toLocaleDateString() : 'Unknown'
+        } as User));
         setUsers(usersData);
 
-        // Set default stats for now to make page visible
-        setStudentStats({
-          classesToday: 0,
-          attendanceRate: 0,
-          totalClasses: 0,
-          pendingRequests: 0
-        });
+        // Fetch enrolled classes
+        const classes = await getEnrolledClassesForStudent(userData.userId);
+        setEnrolledClasses(classes);
+
+        // Calculate classes today
+        const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }); // e.g., "Monday"
+        const todayClasses = classes.filter(cls =>
+          cls.schedule && cls.schedule.toLowerCase().includes(today.toLowerCase().substring(0, 3))
+        );
+        setClassesToday(todayClasses);
+
+        // Fetch attendance stats
+        try {
+          const summary = await calculateStudentAttendanceSummary(userData.userId);
+
+          setStudentStats({
+            classesToday: todayClasses.length,
+            attendanceRate: summary.attendancePercentage,
+            totalClasses: classes.length, // Use actual count of enrolled classes
+            pendingRequests: DEFAULT_VALUES.PENDING_REQUESTS // Keep default for now
+          });
+        } catch (error) {
+          console.error('Error fetching attendance summary:', error);
+          setStudentStats({
+            classesToday: todayClasses.length,
+            attendanceRate: 0,
+            totalClasses: classes.length,
+            pendingRequests: 0
+          });
+        }
 
       } catch (error) {
         console.error('Error fetching student data:', error);
-        // Set default values if anything fails
-        setStudentStats({
-          classesToday: 0,
-          attendanceRate: 0,
-          totalClasses: 0,
-          pendingRequests: 0
-        });
       } finally {
         setDataLoading(false);
       }
@@ -108,7 +122,7 @@ export default function StudentDashboard() {
     <DashboardLayout
       role="student"
       pageTitle="Student Dashboard"
-      pageDescription={`Welcome back, ${userData?.displayName || 'Student'}!`}
+      pageDescription={`My Learning Portal & Progress - ${userData?.displayName || 'Student'}`}
     >
       <div className="space-y-6">
         <UserProfile />
@@ -117,8 +131,8 @@ export default function StudentDashboard() {
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">{studentStats.classesToday}</div>
-              <p className="text-sm text-muted-foreground">Classes Today</p>
+              <div className="text-2xl font-bold text-orange-600">{studentStats.totalClasses}</div>
+              <p className="text-sm text-muted-foreground">Enrolled Classes</p>
             </CardContent>
           </Card>
           <Card>
@@ -129,14 +143,14 @@ export default function StudentDashboard() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">{studentStats.pendingRequests}</div>
-              <p className="text-sm text-muted-foreground">Pending Requests</p>
+              <div className="text-2xl font-bold text-blue-600">{studentStats.classesToday}</div>
+              <p className="text-sm text-muted-foreground">Classes Today</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">{studentStats.totalClasses}</div>
-              <p className="text-sm text-muted-foreground">Total Classes</p>
+              <div className="text-2xl font-bold text-purple-600">{studentStats.pendingRequests}</div>
+              <p className="text-sm text-muted-foreground">Pending Requests</p>
             </CardContent>
           </Card>
         </div>
@@ -206,11 +220,25 @@ export default function StudentDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8">
-                <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                <p className="text-muted-foreground">No classes scheduled</p>
-                <p className="text-sm text-muted-foreground">Classes will appear here once scheduled</p>
-              </div>
+              {classesToday.length === 0 ? (
+                <div className="text-center py-8">
+                  <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-muted-foreground">No classes scheduled for today</p>
+                  <p className="text-sm text-muted-foreground">Enjoy your day off!</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {classesToday.map(cls => (
+                    <div key={cls.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <div className="font-medium">{cls.name}</div>
+                        <div className="text-sm text-muted-foreground">{cls.schedule} • {cls.room}</div>
+                      </div>
+                      <Badge>{cls.status}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -223,9 +251,11 @@ export default function StudentDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-center py-8">
-                <CheckCircle2 className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                <p className="text-muted-foreground">No attendance records</p>
-                <p className="text-sm text-muted-foreground">Attendance data will appear once classes begin</p>
+                <div className="text-3xl font-bold mb-2 text-primary">{studentStats.attendanceRate}%</div>
+                <p className="text-muted-foreground">Overall Attendance</p>
+                {studentStats.totalClasses === 0 && (
+                  <p className="text-sm text-muted-foreground mt-2">Attendance data will appear once classes begin</p>
+                )}
               </div>
             </CardContent>
           </Card>

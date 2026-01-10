@@ -8,6 +8,10 @@ import { BarChart3, TrendingUp, FileText, Download, Calendar } from "lucide-reac
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { DEFAULT_VALUES, calculateRegularAttendees, calculateNeedsAttention, STATUS_COLORS } from "@/config/constants";
+import { useReportGenerator } from "@/hooks/useReportGenerator";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/components/ui/use-toast";
 
 interface User {
   id: string;
@@ -20,8 +24,13 @@ interface User {
 }
 
 export default function TeacherReports() {
+  const { userData } = useAuth();
+  const { generateReport, isGenerating, error } = useReportGenerator();
+  const { toast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reportType, setReportType] = useState("summary");
+  const [period, setPeriod] = useState("week");
 
   // Fetch users from Firebase
   useEffect(() => {
@@ -53,23 +62,23 @@ export default function TeacherReports() {
   }, []);
 
   const students = users.filter(u => u.role === 'student');
-  
+
   // Generate reports based on real data - empty until attendance system is active
   const reports = [
-    { 
-      period: "This Week", 
-      attendance: 0, 
-      trend: "up" 
+    {
+      period: "This Week",
+      attendance: DEFAULT_VALUES.ATTENDANCE_RATE,
+      trend: "up"
     },
-    { 
-      period: "This Month", 
-      attendance: 0, 
-      trend: "up" 
+    {
+      period: "This Month",
+      attendance: DEFAULT_VALUES.ATTENDANCE_RATE,
+      trend: "up"
     },
-    { 
-      period: "This Semester", 
-      attendance: 0, 
-      trend: "up" 
+    {
+      period: "This Semester",
+      attendance: DEFAULT_VALUES.ATTENDANCE_RATE,
+      trend: "up"
     }
   ];
 
@@ -81,7 +90,7 @@ export default function TeacherReports() {
     >
       <div className="space-y-6">
         <UserProfile />
-        
+
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <div className="text-center">
@@ -109,9 +118,8 @@ export default function TeacherReports() {
                             <p className="text-sm text-muted-foreground">{report.period}</p>
                             <p className="text-2xl font-bold">{report.attendance}%</p>
                           </div>
-                          <div className={`p-2 rounded-full ${
-                            report.trend === "up" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
-                          }`}>
+                          <div className={`p-2 rounded-full ${report.trend === "up" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
+                            }`}>
                             <TrendingUp className={`h-4 w-4 ${report.trend === "down" ? "rotate-180" : ""}`} />
                           </div>
                         </div>
@@ -125,36 +133,87 @@ export default function TeacherReports() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <label className="block text-sm font-medium">Report Type:</label>
-                      <Select>
+                      <Select value={reportType} onValueChange={setReportType}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select report type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="attendance">Attendance Summary</SelectItem>
-                          <SelectItem value="detailed">Detailed Attendance</SelectItem>
-                          <SelectItem value="student">Individual Student</SelectItem>
-                          <SelectItem value="trends">Attendance Trends</SelectItem>
+                          <SelectItem value="summary">Attendance Summary</SelectItem>
+                          <SelectItem value="class">Class Report</SelectItem>
+                          {/* <SelectItem value="student">Individual Student (Coming Soon)</SelectItem> */}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <label className="block text-sm font-medium">Period:</label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select period" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="week">This Week</SelectItem>
-                          <SelectItem value="month">This Month</SelectItem>
-                          <SelectItem value="semester">This Semester</SelectItem>
-                          <SelectItem value="custom">Custom Range</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      {reportType !== 'class' ? (
+                        <>
+                          <label className="block text-sm font-medium">Period:</label>
+                          <Select value={period} onValueChange={setPeriod}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select period" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="week">This Week</SelectItem>
+                              <SelectItem value="month">This Month</SelectItem>
+                              <SelectItem value="semester">This Semester</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </>
+                      ) : (
+                        // Class selector would go here, for now simpler implementation
+                        <>
+                          <label className="block text-sm font-medium">Filter:</label>
+                          <Select value={period} onValueChange={setPeriod}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select period" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="week">This Week</SelectItem>
+                              <SelectItem value="month">This Month</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <Button className="w-full">
-                    <FileText className="h-4 w-4 mr-2" />
-                    Generate Report
+                  <Button
+                    className="w-full"
+                    onClick={async () => {
+                      // For teachers, we scope to their ID
+                      const success = await generateReport({
+                        type: reportType as any,
+                        format: 'pdf', // Default to PDF for simplicity
+                        dateRange: period as any,
+                        role: 'teacher',
+                        userId: userData?.userId,
+                        title: `Teacher ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} Report`
+                      });
+                      if (success) {
+                        toast({
+                          title: "Report Generated",
+                          description: "Your report has been downloaded successfully.",
+                        });
+                      } else {
+                        toast({
+                          title: "Generation Failed",
+                          description: error || "Could not generate report. Try different criteria.",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                    disabled={isGenerating}
+                  >
+                    {isGenerating ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="h-4 w-4 mr-2" />
+                        Generate Report
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardContent>
@@ -173,13 +232,13 @@ export default function TeacherReports() {
                   </div>
                   <div className="text-center p-4 border rounded-lg">
                     <div className="text-2xl font-bold text-green-600">
-                      {Math.round(students.length * 0.85)}
+                      {calculateRegularAttendees(students.length)}
                     </div>
                     <p className="text-sm text-muted-foreground">Regular Attendees</p>
                   </div>
                   <div className="text-center p-4 border rounded-lg">
                     <div className="text-2xl font-bold text-yellow-600">
-                      {Math.round(students.length * 0.15)}
+                      {calculateNeedsAttention(students.length)}
                     </div>
                     <p className="text-sm text-muted-foreground">Need Attention</p>
                   </div>
@@ -211,7 +270,7 @@ export default function TeacherReports() {
                         status: "completed"
                       },
                       {
-                        id: "2", 
+                        id: "2",
                         name: "Student Performance Report",
                         date: new Date(Date.now() - 86400000).toLocaleDateString(),
                         type: "Performance",
@@ -231,7 +290,7 @@ export default function TeacherReports() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge className="bg-green-100 text-green-800">Completed</Badge>
+                          <Badge className={STATUS_COLORS.COMPLETED}>Completed</Badge>
                           <Button size="sm" variant="outline">
                             <Download className="h-4 w-4 mr-1" />
                             Download

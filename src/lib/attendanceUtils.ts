@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, query, where, orderBy, updateDoc, doc, deleteDoc, Timestamp } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, updateDoc, doc, deleteDoc } from "firebase/firestore";
 import { db } from "./firebase";
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
@@ -49,6 +49,97 @@ export interface StudentAttendanceSummary {
 }
 
 /**
+ * Check if attendance already exists for a student on a specific date and class
+ */
+export const checkExistingAttendance = async (
+  studentId: string,
+  classId: string,
+  date: string
+): Promise<AttendanceRecord | null> => {
+  try {
+    // Determine query based on available indexes
+    // To be safe, we'll query by studentId and classId, then filter by date in memory
+    // This avoids needing complex composite indexes
+    const q = query(
+      collection(db, 'attendance'),
+      where('studentId', '==', studentId),
+      where('classId', '==', classId)
+    );
+
+    const snapshot = await getDocs(q);
+    
+    // Filter by date in memory
+    const existing = snapshot.docs.find(doc => doc.data().date === date);
+    
+    if (!existing) {
+      return null;
+    }
+
+    return {
+      id: existing.id,
+      ...existing.data()
+    } as AttendanceRecord;
+  } catch (error) {
+    console.error('Error checking existing attendance:', error);
+    // Fallback: try querying just by studentId and date
+    // This helps if the specific index above is missing but others exist
+    try {
+      const q = query(
+        collection(db, 'attendance'),
+        where('studentId', '==', studentId),
+        where('date', '==', date)
+      );
+      
+      const snapshot = await getDocs(q);
+      const existing = snapshot.docs.find(doc => doc.data().classId === classId);
+      
+      if (!existing) return null;
+      
+      return {
+        id: existing.id,
+        ...existing.data()
+      } as AttendanceRecord;
+    } catch (fallbackError) {
+      console.error('Fallback check failed:', fallbackError);
+      throw error;
+    }
+  }
+};
+
+/**
+ * Save or update attendance record
+ */
+export const saveAttendanceRecord = async (attendanceData: Omit<AttendanceRecord, 'id'>): Promise<string> => {
+  try {
+    // Check if attendance already exists
+    const existing = await checkExistingAttendance(
+      attendanceData.studentId,
+      attendanceData.classId,
+      attendanceData.date
+    );
+
+    if (existing) {
+      // Update existing record
+      const attendanceRef = doc(db, 'attendance', existing.id);
+      await updateDoc(attendanceRef, {
+        ...attendanceData,
+        updatedAt: new Date().toISOString()
+      });
+      console.log(`Updated existing attendance for ${attendanceData.studentName}`);
+      return existing.id;
+    } else {
+      // Create new record
+      const docRef = await addDoc(collection(db, 'attendance'), attendanceData);
+      console.log(`Created new attendance for ${attendanceData.studentName}`);
+      return docRef.id;
+    }
+  } catch (error) {
+    console.error('Error saving attendance record:', error);
+    throw error;
+  }
+};
+
+/**
  * Create a new attendance session for a class
  */
 export const createAttendanceSession = async (
@@ -84,20 +175,11 @@ export const createAttendanceSession = async (
       status: 'active' as const,
       createdAt: new Date().toISOString()
     };
-
-    console.log('Attempting to save session data:', sessionData);
     
     const docRef = await addDoc(collection(db, 'attendanceSessions'), sessionData);
-    console.log('Successfully created session with ID:', docRef.id);
-    
     return docRef.id;
   } catch (error) {
     console.error('Error in createAttendanceSession:', error);
-    console.error('Error details:', {
-      code: error.code,
-      message: error.message,
-      stack: error.stack
-    });
     throw error;
   }
 };
@@ -117,18 +199,6 @@ export const markAttendance = async (
   notes?: string
 ): Promise<string> => {
   try {
-    console.log('markAttendance called with:', {
-      sessionId,
-      classId,
-      className,
-      teacherId,
-      teacherName,
-      studentId,
-      studentName,
-      status,
-      notes
-    });
-
     const today = new Date().toISOString().split('T')[0];
     
     const attendanceData = {
@@ -144,20 +214,11 @@ export const markAttendance = async (
       notes: notes || '',
       markedAt: new Date().toISOString()
     };
-
-    console.log('Attempting to save attendance data:', attendanceData);
     
     const docRef = await addDoc(collection(db, 'attendance'), attendanceData);
-    console.log('Successfully saved attendance with ID:', docRef.id);
-    
     return docRef.id;
   } catch (error) {
     console.error('Error in markAttendance:', error);
-    console.error('Error details:', {
-      code: error.code,
-      message: error.message,
-      stack: error.stack
-    });
     throw error;
   }
 };
@@ -222,28 +283,50 @@ export const fetchAttendanceByDateAndClass = async (
   classId?: string
 ): Promise<AttendanceRecord[]> => {
   try {
+    // Query without orderBy first to avoid index issues
     let q = query(
       collection(db, 'attendance'),
-      where('date', '==', date),
-      orderBy('markedAt', 'desc')
+      where('date', '==', date)
     );
 
     if (classId) {
       q = query(
         collection(db, 'attendance'),
         where('date', '==', date),
-        where('classId', '==', classId),
-        orderBy('markedAt', 'desc')
+        where('classId', '==', classId)
       );
     }
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({
+    const records = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     } as AttendanceRecord));
+
+    // Sort in memory instead
+    return records.sort((a, b) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime());
   } catch (error) {
     console.error('Error fetching attendance records:', error);
+    
+    // Fallback: fetch all for date then filter by class in memory
+    // This helps if the composite index (date + classId) is missing
+    if (classId) {
+      try {
+        const q = query(
+          collection(db, 'attendance'),
+          where('date', '==', date)
+        );
+        const snapshot = await getDocs(q);
+        const records = snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord))
+          .filter(r => r.classId === classId);
+          
+        return records.sort((a, b) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime());
+      } catch (fbError) {
+        console.error('Fallback fetch failed:', fbError);
+      }
+    }
+    
     throw error;
   }
 };
@@ -257,10 +340,11 @@ export const fetchStudentAttendance = async (
   endDate?: string
 ): Promise<AttendanceRecord[]> => {
   try {
-    let q = query(
+    // Avoid composite index requirement (where + orderBy)
+    // Just fetch by studentId
+    const q = query(
       collection(db, 'attendance'),
-      where('studentId', '==', studentId),
-      orderBy('date', 'desc')
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
@@ -269,7 +353,7 @@ export const fetchStudentAttendance = async (
       ...doc.data()
     } as AttendanceRecord));
 
-    // Filter by date range if provided
+    // Filter by date range in memory
     if (startDate || endDate) {
       records = records.filter(record => {
         if (startDate && record.date < startDate) return false;
@@ -278,7 +362,8 @@ export const fetchStudentAttendance = async (
       });
     }
 
-    return records;
+    // Sort by date descending in memory
+    return records.sort((a, b) => b.date.localeCompare(a.date));
   } catch (error) {
     console.error('Error fetching student attendance:', error);
     throw error;
@@ -294,10 +379,11 @@ export const fetchTeacherAttendance = async (
   endDate?: string
 ): Promise<AttendanceRecord[]> => {
   try {
-    let q = query(
+    // Avoid composite index requirement (where + orderBy)
+    // Just fetch by teacherId
+    const q = query(
       collection(db, 'attendance'),
-      where('teacherId', '==', teacherId),
-      orderBy('date', 'desc')
+      where('teacherId', '==', teacherId)
     );
 
     const snapshot = await getDocs(q);
@@ -306,7 +392,7 @@ export const fetchTeacherAttendance = async (
       ...doc.data()
     } as AttendanceRecord));
 
-    // Filter by date range if provided
+    // Filter by date range in memory
     if (startDate || endDate) {
       records = records.filter(record => {
         if (startDate && record.date < startDate) return false;
@@ -315,7 +401,8 @@ export const fetchTeacherAttendance = async (
       });
     }
 
-    return records;
+    // Sort by date descending in memory
+    return records.sort((a, b) => b.date.localeCompare(a.date));
   } catch (error) {
     console.error('Error fetching teacher attendance:', error);
     throw error;
@@ -330,19 +417,16 @@ export const fetchAllAttendance = async (
   endDate?: string
 ): Promise<AttendanceRecord[]> => {
   try {
-    const q = query(
-      collection(db, 'attendance'),
-      orderBy('date', 'desc'),
-      orderBy('markedAt', 'desc')
-    );
-
-    const snapshot = await getDocs(q);
+    // Fetch all records, no orderBy at query level to be safe
+    const attendanceCollection = collection(db, 'attendance');
+    const snapshot = await getDocs(attendanceCollection);
+    
     let records = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     } as AttendanceRecord));
 
-    // Filter by date range if provided
+    // Filter by date range in memory
     if (startDate || endDate) {
       records = records.filter(record => {
         if (startDate && record.date < startDate) return false;
@@ -351,7 +435,12 @@ export const fetchAllAttendance = async (
       });
     }
 
-    return records;
+    // Sort by date descending in memory
+    return records.sort((a, b) => {
+      const dateCompare = b.date.localeCompare(a.date);
+      if (dateCompare !== 0) return dateCompare;
+      return new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime();
+    });
   } catch (error) {
     console.error('Error fetching all attendance:', error);
     throw error;

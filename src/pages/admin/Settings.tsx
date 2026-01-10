@@ -1,3 +1,4 @@
+import { ATTENDANCE_THRESHOLDS } from "@/config/constants";
 import { useState } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { UserProfile } from "@/components/UserProfile";
@@ -111,7 +112,7 @@ const notificationSettings: SystemSetting[] = [
     id: 'attendance_threshold',
     name: 'Attendance Threshold (%)',
     description: 'Minimum attendance percentage before alert',
-    value: '75',
+    value: ATTENDANCE_THRESHOLDS.SATISFACTORY.toString(),
     type: 'number'
   }
 ];

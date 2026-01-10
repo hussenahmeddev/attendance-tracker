@@ -12,7 +12,10 @@ import { useState, useEffect } from "react";
 import { collection, getDocs, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-import { fetchTeacherClasses, getClassStats, type Class } from "@/lib/classUtils";
+import { fetchTeacherClasses, getClassStats, type Class, updateClass } from "@/lib/classUtils";
+import { DEFAULT_VALUES } from "@/config/constants";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 interface User {
   id: string;
@@ -26,17 +29,36 @@ interface User {
 
 export default function TeacherClasses() {
   const { userData } = useAuth();
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Dialog States
   const [isRequestClassOpen, setIsRequestClassOpen] = useState(false);
+  const [isViewDetailsOpen, setIsViewDetailsOpen] = useState(false);
+  const [isEditClassOpen, setIsEditClassOpen] = useState(false);
+
+  const [selectedClass, setSelectedClass] = useState<Class | null>(null);
+
   const [requesting, setRequesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   const [requestData, setRequestData] = useState({
     name: '',
     subject: '',
     grade: '',
     room: '',
     maxStudents: ''
+  });
+
+  const [editData, setEditData] = useState({
+    name: '',
+    subject: '',
+    grade: '',
+    room: '',
+    schedule: '',
+    maxStudents: '' // keep as string for input
   });
 
   // Fetch users and teacher's classes from Firebase
@@ -77,7 +99,7 @@ export default function TeacherClasses() {
 
   const handleRequestClass = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!requestData.name || !requestData.subject) {
       alert('Please fill in required fields (Name and Subject)');
       return;
@@ -102,8 +124,8 @@ export default function TeacherClasses() {
         teacher: userData.displayName || 'Unknown',
         teacherId: userData.userId,
         room: requestData.room || 'TBD',
-        maxStudents: parseInt(requestData.maxStudents) || 30,
-        students: 0,
+        maxStudents: parseInt(requestData.maxStudents) || DEFAULT_VALUES.MAX_STUDENTS_PER_CLASS,
+        students: DEFAULT_VALUES.STUDENT_COUNT,
         schedule: "To be scheduled",
         status: 'pending' as const,
         requestedAt: new Date().toISOString(),
@@ -112,23 +134,75 @@ export default function TeacherClasses() {
 
       // Add to Firestore
       const docRef = await addDoc(collection(db, 'classes'), classRequest);
-      
+
       // Add to local state
       const localClass = {
         id: docRef.id,
         ...classRequest
       };
-      
+
       setClasses(prev => [localClass, ...prev]);
       setRequestData({ name: '', subject: '', grade: '', room: '', maxStudents: '' });
       setIsRequestClassOpen(false);
       alert('Class request submitted successfully! Waiting for admin approval.');
-      
+
     } catch (error) {
       console.error('Error requesting class:', error);
       alert(`Failed to submit class request: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setRequesting(false);
+    }
+  };
+
+  const handleViewDetails = (cls: Class) => {
+    setSelectedClass(cls);
+    setIsViewDetailsOpen(true);
+  };
+
+  const handleEditClick = (cls: Class) => {
+    setSelectedClass(cls);
+    setEditData({
+      name: cls.name,
+      subject: cls.subject,
+      grade: cls.grade,
+      room: cls.room || '',
+      schedule: cls.schedule || '',
+      maxStudents: cls.maxStudents?.toString() || ''
+    });
+    setIsEditClassOpen(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClass) return;
+
+    setSaving(true);
+    try {
+      const updates = {
+        name: editData.name,
+        subject: editData.subject,
+        grade: editData.grade,
+        room: editData.room,
+        schedule: editData.schedule,
+        maxStudents: parseInt(editData.maxStudents) || 0
+      };
+
+      await updateClass(selectedClass.id, updates);
+
+      // Update local state
+      setClasses(prev => prev.map(c =>
+        c.id === selectedClass.id
+          ? { ...c, ...updates }
+          : c
+      ));
+
+      toast.success("Class updated successfully");
+      setIsEditClassOpen(false);
+    } catch (error) {
+      console.error('Error updating class:', error);
+      toast.error("Failed to update class");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -143,7 +217,7 @@ export default function TeacherClasses() {
     >
       <div className="space-y-6">
         <UserProfile />
-        
+
         {!userData ? (
           <Card>
             <CardContent className="p-6 text-center">
@@ -164,207 +238,354 @@ export default function TeacherClasses() {
           </Card>
         ) : (
           <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle className="flex items-center gap-2">
-                <BookOpen className="h-5 w-5" />
-                My Assigned Classes ({classes.length})
-              </CardTitle>
-              <Dialog open={isRequestClassOpen} onOpenChange={setIsRequestClassOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Request New Class
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Request New Class</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleRequestClass} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="requestClassName">Class Name *</Label>
-                      <Input 
-                        id="requestClassName" 
-                        placeholder="e.g., Advanced Physics Grade 12"
-                        value={requestData.name}
-                        onChange={(e) => setRequestData(prev => ({ ...prev, name: e.target.value }))}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="requestSubject">Subject *</Label>
-                      <Input 
-                        id="requestSubject" 
-                        placeholder="e.g., Physics"
-                        value={requestData.subject}
-                        onChange={(e) => setRequestData(prev => ({ ...prev, subject: e.target.value }))}
-                        required
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  My Assigned Classes ({classes.length})
+                </CardTitle>
+                <Dialog open={isRequestClassOpen} onOpenChange={setIsRequestClassOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Request New Class
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Request New Class</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleRequestClass} className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="requestGrade">Grade</Label>
-                        <Select value={requestData.grade} onValueChange={(value) => setRequestData(prev => ({ ...prev, grade: value }))}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Grade" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="9">Grade 9</SelectItem>
-                            <SelectItem value="10">Grade 10</SelectItem>
-                            <SelectItem value="11">Grade 11</SelectItem>
-                            <SelectItem value="12">Grade 12</SelectItem>
-                            <SelectItem value="All">All Grades</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="requestRoom">Preferred Room</Label>
-                        <Input 
-                          id="requestRoom" 
-                          placeholder="Room 101"
-                          value={requestData.room}
-                          onChange={(e) => setRequestData(prev => ({ ...prev, room: e.target.value }))}
+                        <Label htmlFor="requestClassName">Class Name *</Label>
+                        <Input
+                          id="requestClassName"
+                          placeholder="e.g., Advanced Physics Grade 12"
+                          value={requestData.name}
+                          onChange={(e) => setRequestData(prev => ({ ...prev, name: e.target.value }))}
+                          required
                         />
                       </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="requestMaxStudents">Max Students</Label>
-                      <Input 
-                        id="requestMaxStudents" 
-                        type="number" 
-                        placeholder="30"
-                        value={requestData.maxStudents}
-                        onChange={(e) => setRequestData(prev => ({ ...prev, maxStudents: e.target.value }))}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button type="submit" className="flex-1" disabled={requesting || !userData}>
-                        {requesting ? 'Submitting...' : 'Submit Request'}
-                      </Button>
-                      <Button type="button" variant="outline" onClick={() => setIsRequestClassOpen(false)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-                  <p className="text-muted-foreground">Loading classes...</p>
-                </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="requestSubject">Subject *</Label>
+                        <Input
+                          id="requestSubject"
+                          placeholder="e.g., Physics"
+                          value={requestData.subject}
+                          onChange={(e) => setRequestData(prev => ({ ...prev, subject: e.target.value }))}
+                          required
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="requestGrade">Grade</Label>
+                          <Select value={requestData.grade} onValueChange={(value) => setRequestData(prev => ({ ...prev, grade: value }))}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Grade" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="9">Grade 9</SelectItem>
+                              <SelectItem value="10">Grade 10</SelectItem>
+                              <SelectItem value="11">Grade 11</SelectItem>
+                              <SelectItem value="12">Grade 12</SelectItem>
+                              <SelectItem value="All">All Grades</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="requestRoom">Preferred Room</Label>
+                          <Input
+                            id="requestRoom"
+                            placeholder="Room 101"
+                            value={requestData.room}
+                            onChange={(e) => setRequestData(prev => ({ ...prev, room: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="requestMaxStudents">Max Students</Label>
+                        <Input
+                          id="requestMaxStudents"
+                          type="number"
+                          placeholder="30"
+                          value={requestData.maxStudents}
+                          onChange={(e) => setRequestData(prev => ({ ...prev, maxStudents: e.target.value }))}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="submit" className="flex-1" disabled={requesting || !userData}>
+                          {requesting ? 'Submitting...' : 'Submit Request'}
+                        </Button>
+                        <Button type="button" variant="outline" onClick={() => setIsRequestClassOpen(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </div>
-            ) : (
-              <>
-                {/* Summary Stats */}
-                <div className="grid gap-4 md:grid-cols-4 mb-6">
-                  <Card>
-                    <CardContent className="p-4 text-center">
-                      <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-                      <p className="text-sm text-muted-foreground">Total Classes</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 text-center">
-                      <div className="text-2xl font-bold text-green-600">{stats.totalStudents}</div>
-                      <p className="text-sm text-muted-foreground">Total Students</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 text-center">
-                      <div className="text-2xl font-bold text-purple-600">{stats.active}</div>
-                      <p className="text-sm text-muted-foreground">Active Classes</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 text-center">
-                      <div className="text-2xl font-bold text-orange-600">{stats.pending}</div>
-                      <p className="text-sm text-muted-foreground">Pending Approval</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Classes Grid */}
-                <div className="grid gap-4 md:grid-cols-2">
-                  {classes.length === 0 ? (
-                    <div className="col-span-2 text-center py-8">
-                      <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-muted-foreground">No classes assigned</p>
-                      <p className="text-sm text-muted-foreground">Contact admin to get classes assigned</p>
-                    </div>
-                  ) : (
-                    classes.map((cls) => (
-                      <Card key={cls.id} className="border-l-4 border-l-primary">
-                        <CardContent className="p-4">
-                          <div className="flex justify-between items-start mb-3">
-                            <div>
-                              <h3 className="font-semibold text-lg">{cls.name}</h3>
-                              <p className="text-muted-foreground">{cls.subject} • Grade {cls.grade}</p>
-                            </div>
-                            <Badge variant={cls.status === "active" ? "default" : cls.status === "pending" ? "secondary" : "outline"}>
-                              {cls.status === "pending" ? "Pending Approval" : `${cls.students} students`}
-                            </Badge>
-                          </div>
-                          <div className="space-y-2 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              <Clock className="h-4 w-4" />
-                              {cls.schedule}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <BookOpen className="h-4 w-4" />
-                              {cls.room}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Users className="h-4 w-4" />
-                              {cls.students} students enrolled
-                            </div>
-                          </div>
-                          <div className="flex gap-2 mt-4">
-                            <Button size="sm" variant="outline" className="flex-1">
-                              <Eye className="h-4 w-4 mr-1" />
-                              View Details
-                            </Button>
-                            <Button size="sm" variant="outline">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
-                </div>
-
-                {/* Quick Actions */}
-                {classes.length > 0 && (
-                  <div className="mt-6 p-4 bg-muted/30 rounded-lg">
-                    <h3 className="font-semibold mb-3">Quick Actions</h3>
-                    <div className="grid gap-2 md:grid-cols-3">
-                      <Button variant="outline" className="justify-start">
-                        <Users className="h-4 w-4 mr-2" />
-                        Take Attendance
-                      </Button>
-                      <Button variant="outline" className="justify-start">
-                        <BookOpen className="h-4 w-4 mr-2" />
-                        View Students
-                      </Button>
-                      <Button variant="outline" className="justify-start">
-                        <Clock className="h-4 w-4 mr-2" />
-                        Class Schedule
-                      </Button>
-                    </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                    <p className="text-muted-foreground">Loading classes...</p>
                   </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+                </div>
+              ) : (
+                <>
+                  {/* Summary Stats */}
+                  <div className="grid gap-4 md:grid-cols-4 mb-6">
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
+                        <p className="text-sm text-muted-foreground">Total Classes</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-2xl font-bold text-green-600">{stats.totalStudents}</div>
+                        <p className="text-sm text-muted-foreground">Total Students</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-2xl font-bold text-purple-600">{stats.active}</div>
+                        <p className="text-sm text-muted-foreground">Active Classes</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-4 text-center">
+                        <div className="text-2xl font-bold text-orange-600">{stats.pending}</div>
+                        <p className="text-sm text-muted-foreground">Pending Approval</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Classes Grid */}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {classes.length === 0 ? (
+                      <div className="col-span-2 text-center py-8">
+                        <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-muted-foreground">No classes assigned</p>
+                        <p className="text-sm text-muted-foreground">Contact admin to get classes assigned</p>
+                      </div>
+                    ) : (
+                      classes.map((cls) => (
+                        <Card key={cls.id} className="border-l-4 border-l-primary">
+                          <CardContent className="p-4">
+                            <div className="flex justify-between items-start mb-3">
+                              <div>
+                                <h3 className="font-semibold text-lg">{cls.name}</h3>
+                                <p className="text-muted-foreground">{cls.subject} • Grade {cls.grade}</p>
+                              </div>
+                              <Badge variant={cls.status === "active" ? "default" : cls.status === "pending" ? "secondary" : "outline"}>
+                                {cls.status === "pending" ? "Pending Approval" : `${cls.students} students`}
+                              </Badge>
+                            </div>
+                            <div className="space-y-2 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                {cls.schedule}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <BookOpen className="h-4 w-4" />
+                                {cls.room}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4" />
+                                {cls.students} students enrolled
+                              </div>
+                            </div>
+                            <div className="flex gap-2 mt-4">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => handleViewDetails(cls)}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                View Details
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEditClick(cls)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Quick Actions */}
+                  {classes.length > 0 && (
+                    <div className="mt-6 p-4 bg-muted/30 rounded-lg">
+                      <h3 className="font-semibold mb-3">Quick Actions</h3>
+                      <div className="grid gap-2 md:grid-cols-3">
+                        <Button variant="outline" className="justify-start" onClick={() => navigate('/teacher/attendance')}>
+                          <Users className="h-4 w-4 mr-2" />
+                          Take Attendance
+                        </Button>
+                        <Button variant="outline" className="justify-start" onClick={() => navigate('/teacher/students')}>
+                          <BookOpen className="h-4 w-4 mr-2" />
+                          View Students
+                        </Button>
+                        <Button variant="outline" className="justify-start" onClick={() => navigate('/teacher/schedule')}>
+                          <Clock className="h-4 w-4 mr-2" />
+                          Class Schedule
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
         )}
       </div>
-    </DashboardLayout>
+      {/* View Details Dialog */}
+      <Dialog open={isViewDetailsOpen} onOpenChange={setIsViewDetailsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Class Details</DialogTitle>
+          </DialogHeader>
+          {selectedClass && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Class Name</Label>
+                  <p className="font-medium">{selectedClass.name}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Subject</Label>
+                  <p className="font-medium">{selectedClass.subject}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Grade</Label>
+                  <p className="font-medium">{selectedClass.grade}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Room</Label>
+                  <p className="font-medium">{selectedClass.room || 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Schedule</Label>
+                  <p className="font-medium">{selectedClass.schedule || 'Not scheduled'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Status</Label>
+                  <Badge variant={selectedClass.status === 'active' ? 'default' : 'secondary'}>{selectedClass.status}</Badge>
+                </div>
+              </div>
+              <div className="border-t pt-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-semibold">Enrollment</h4>
+                  <Badge variant="outline">{selectedClass.students} / {selectedClass.maxStudents || DEFAULT_VALUES.MAX_STUDENTS_PER_CLASS}</Badge>
+                </div>
+                <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-primary h-full"
+                    style={{ width: `${Math.min(100, (selectedClass.students / (selectedClass.maxStudents || DEFAULT_VALUES.MAX_STUDENTS_PER_CLASS)) * 100)}%` }}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <Button variant="outline" onClick={() => setIsViewDetailsOpen(false)}>Close</Button>
+                <Button onClick={() => {
+                  setIsViewDetailsOpen(false);
+                  navigate(`/teacher/attendance?classId=${selectedClass.id}`);
+                }}>
+                  Take Attendance
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Class Dialog */}
+      <Dialog open={isEditClassOpen} onOpenChange={setIsEditClassOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Class</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveEdit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="editName">Class Name</Label>
+              <Input
+                id="editName"
+                value={editData.name}
+                onChange={(e) => setEditData(prev => ({ ...prev, name: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="editSubject">Subject</Label>
+                <Input
+                  id="editSubject"
+                  value={editData.subject}
+                  onChange={(e) => setEditData(prev => ({ ...prev, subject: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editGrade">Grade</Label>
+                <Select value={editData.grade} onValueChange={(value) => setEditData(prev => ({ ...prev, grade: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Grade" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="9">Grade 9</SelectItem>
+                    <SelectItem value="10">Grade 10</SelectItem>
+                    <SelectItem value="11">Grade 11</SelectItem>
+                    <SelectItem value="12">Grade 12</SelectItem>
+                    <SelectItem value="All">All Grades</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="editRoom">Room</Label>
+                <Input
+                  id="editRoom"
+                  value={editData.room}
+                  onChange={(e) => setEditData(prev => ({ ...prev, room: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editSchedule">Schedule</Label>
+                <Input
+                  id="editSchedule"
+                  value={editData.schedule}
+                  onChange={(e) => setEditData(prev => ({ ...prev, schedule: e.target.value }))}
+                  placeholder="e.g Mon 10:00 AM"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editMax">Max Students</Label>
+              <Input
+                id="editMax"
+                type="number"
+                value={editData.maxStudents}
+                onChange={(e) => setEditData(prev => ({ ...prev, maxStudents: e.target.value }))}
+              />
+            </div>
+            <div className="flex gap-2 justify-end mt-4">
+              <Button type="button" variant="outline" onClick={() => setIsEditClassOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+    </DashboardLayout >
   );
 }

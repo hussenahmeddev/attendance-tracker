@@ -25,6 +25,7 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { fetchTeacherClasses, type Class } from "@/lib/classUtils";
 import { getAttendanceStatistics, fetchTeacherAttendance } from "@/lib/attendanceUtils";
+import { DEFAULT_VALUES } from "@/config/constants";
 
 interface Student {
   id: string;
@@ -42,10 +43,10 @@ export default function TeacherDashboard() {
   const [studentsLoading, setStudentsLoading] = useState(true);
   const [classes, setClasses] = useState<Class[]>([]);
   const [attendanceStats, setAttendanceStats] = useState({
-    attendanceRate: 0,
-    totalClasses: 0,
-    classesToday: 0,
-    totalStudents: 0
+    attendanceRate: DEFAULT_VALUES.ATTENDANCE_RATE,
+    totalClasses: DEFAULT_VALUES.TOTAL_CLASSES,
+    classesToday: DEFAULT_VALUES.CLASSES_TODAY,
+    totalStudents: DEFAULT_VALUES.TOTAL_STUDENTS
   });
 
   // Fetch teacher's classes and students
@@ -79,10 +80,10 @@ export default function TeacherDashboard() {
 
         // Set default stats for now to make page visible
         setAttendanceStats({
-          attendanceRate: 0,
+          attendanceRate: DEFAULT_VALUES.ATTENDANCE_RATE,
           totalClasses: teacherClasses.length,
           classesToday: teacherClasses.filter(c => c.status === 'active').length,
-          totalStudents: teacherClasses.reduce((acc, cls) => acc + (cls.students || 0), 0)
+          totalStudents: teacherClasses.reduce((acc, cls) => acc + (cls.students || DEFAULT_VALUES.STUDENT_COUNT), DEFAULT_VALUES.STUDENT_COUNT)
         });
 
       } catch (error) {
@@ -97,27 +98,27 @@ export default function TeacherDashboard() {
 
 
 
-  const [selectedClass, setSelectedClass] = useState(classes.length > 0 ? classes[0] : {
+  const [selectedClass, setSelectedClass] = useState(classes.length > DEFAULT_VALUES.STUDENT_COUNT ? classes[DEFAULT_VALUES.STUDENT_COUNT] : {
     id: "default",
     name: "No Classes Available",
     subject: "N/A",
     grade: "N/A",
-    students: 0,
+    students: DEFAULT_VALUES.STUDENT_COUNT,
     schedule: "Not scheduled",
     room: "N/A"
   });
 
   // Update selectedClass when classes change
   useEffect(() => {
-    if (classes.length > 0) {
-      setSelectedClass(classes[0]);
+    if (classes.length > DEFAULT_VALUES.STUDENT_COUNT) {
+      setSelectedClass(classes[DEFAULT_VALUES.STUDENT_COUNT]);
     } else {
       setSelectedClass({
         id: "default",
         name: "No Classes Available",
         subject: "N/A",
         grade: "N/A",
-        students: 0,
+        students: DEFAULT_VALUES.STUDENT_COUNT,
         schedule: "Not scheduled",
         room: "N/A"
       });
@@ -125,9 +126,9 @@ export default function TeacherDashboard() {
   }, [students.length]);
 
   const reports = [
-    { period: "This Week", attendance: 0, trend: "up" },
-    { period: "This Month", attendance: 0, trend: "up" },
-    { period: "This Semester", attendance: 0, trend: "up" }
+    { period: "This Week", attendance: DEFAULT_VALUES.ATTENDANCE_RATE, trend: "up" },
+    { period: "This Month", attendance: DEFAULT_VALUES.ATTENDANCE_RATE, trend: "up" },
+    { period: "This Semester", attendance: DEFAULT_VALUES.ATTENDANCE_RATE, trend: "up" }
   ];
 
   if (loading) {

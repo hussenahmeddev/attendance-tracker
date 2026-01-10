@@ -12,6 +12,7 @@ import {
   Settings,
   Calendar
 } from "lucide-react";
+import { STATUS_COLORS } from "@/config/constants";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -71,8 +72,8 @@ export default function StudentNotifications() {
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="font-semibold">Welcome to EduTrack!</h3>
-                                <Badge className="bg-green-100 text-green-800">System</Badge>
-                                <Badge className="bg-blue-100 text-blue-800">New</Badge>
+                                <Badge className={STATUS_COLORS.SYSTEM}>System</Badge>
+                                <Badge className={STATUS_COLORS.NEW}>New</Badge>
                               </div>
                               <p className="text-sm text-muted-foreground mb-2">
                                 Hello {userData?.displayName || 'Student'}! Welcome to the attendance tracking system. 

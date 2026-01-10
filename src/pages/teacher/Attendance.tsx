@@ -18,6 +18,7 @@ import {
   markAttendance,
   completeAttendanceSession,
   fetchAttendanceByDateAndClass,
+  saveAttendanceRecord,
   type AttendanceStatus,
   type AttendanceRecord
 } from "@/lib/attendanceUtils";
@@ -33,8 +34,11 @@ interface Student {
   attendanceId?: string; // For tracking existing attendance records
 }
 
+import { useSearchParams } from "react-router-dom";
+
 export default function TeacherAttendance() {
   const { userData } = useAuth();
+  const [searchParams] = useSearchParams();
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [selectedClass, setSelectedClass] = useState<Class | null>(null);
@@ -52,11 +56,20 @@ export default function TeacherAttendance() {
       try {
         // Fetch teacher's classes
         const teacherClasses = await fetchTeacherClasses(userData.userId);
-        setClasses(teacherClasses.filter(c => c.status === 'active'));
+        const activeClasses = teacherClasses.filter(c => c.status === 'active');
+        setClasses(activeClasses);
 
-        // Set first class as default if available
-        if (teacherClasses.length > 0) {
-          setSelectedClass(teacherClasses[0]);
+        // Set initial class based on query param or default to first
+        const classIdParam = searchParams.get('classId');
+        if (classIdParam) {
+          const paramClass = activeClasses.find(c => c.id === classIdParam);
+          if (paramClass) {
+            setSelectedClass(paramClass);
+          } else if (activeClasses.length > 0) {
+            setSelectedClass(activeClasses[0]);
+          }
+        } else if (activeClasses.length > 0) {
+          setSelectedClass(activeClasses[0]);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -66,7 +79,7 @@ export default function TeacherAttendance() {
     };
 
     fetchData();
-  }, [userData]);
+  }, [userData, searchParams]);
 
   // Fetch students when class changes
   useEffect(() => {
@@ -190,8 +203,8 @@ export default function TeacherAttendance() {
         };
 
         try {
-          const docRef = await addDoc(collection(db, 'attendance'), attendanceRecord);
-          console.log(`✓ Saved ${student.displayName} with ID: ${docRef.id}`);
+          const recordId = await saveAttendanceRecord(attendanceRecord);
+          console.log(`✓ Saved ${student.displayName} with ID: ${recordId}`);
         } catch (studentError) {
           console.error(`✗ Failed to save ${student.displayName}:`, studentError);
           throw new Error(`Failed to save attendance for ${student.displayName}: ${studentError.message}`);

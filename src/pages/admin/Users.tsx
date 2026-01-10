@@ -8,12 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Users, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Search, 
+import {
+  Users,
+  Plus,
+  Edit,
+  Trash2,
+  Search,
   Filter,
   UserCheck,
   UserX,
@@ -44,9 +44,20 @@ export default function AdminUsers() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
+  const [isEditUserOpen, setIsEditUserOpen] = useState(false);
+  const [isViewUserOpen, setIsViewUserOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
   const [creating, setCreating] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
   const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    role: ''
+  });
+
+  const [editFormData, setEditFormData] = useState({
     name: '',
     email: '',
     role: ''
@@ -83,8 +94,8 @@ export default function AdminUsers() {
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.userId.toLowerCase().includes(searchTerm.toLowerCase());
+      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.userId.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = roleFilter === "all" || user.role === roleFilter;
     const matchesStatus = statusFilter === "all" || user.status === statusFilter;
     return matchesSearch && matchesRole && matchesStatus;
@@ -114,15 +125,15 @@ export default function AdminUsers() {
       if (!user) return;
 
       const newStatus = user.status === "active" ? "inactive" : "active";
-      
+
       // Update in Firebase
       await updateDoc(doc(db, 'users', userId), {
         status: newStatus
       });
 
       // Update local state
-      setUsers(prev => prev.map(user => 
-        user.id === userId 
+      setUsers(prev => prev.map(user =>
+        user.id === userId
           ? { ...user, status: newStatus }
           : user
       ));
@@ -132,10 +143,12 @@ export default function AdminUsers() {
   };
 
   const deleteUser = async (userId: string) => {
+    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) return;
+
     try {
       // Delete from Firebase
       await deleteDoc(doc(db, 'users', userId));
-      
+
       // Update local state
       setUsers(prev => prev.filter(user => user.id !== userId));
     } catch (error) {
@@ -145,7 +158,7 @@ export default function AdminUsers() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name || !formData.email || !formData.role) {
       alert('Please fill in all fields');
       return;
@@ -161,30 +174,73 @@ export default function AdminUsers() {
         status: 'active',
         createdAt: new Date().toISOString(),
         // Generate a temporary userId - in a real app this would come from Firebase Auth
-        userId: `${formData.role.toUpperCase().slice(0,3)}${String(Date.now()).slice(-3)}`
+        userId: `${formData.role.toUpperCase().slice(0, 3)}${String(Date.now()).slice(-3)}`
       };
 
       // Add to Firestore
       const docRef = await addDoc(collection(db, 'users'), newUser);
-      
+
       // Add to local state with the new document ID
       const localUser = {
         id: docRef.id,
         ...newUser,
         createdAt: new Date().toLocaleDateString()
       };
-      
+
       setUsers(prev => [localUser, ...prev]);
       setFormData({ name: '', email: '', role: '' });
       setIsAddUserOpen(false);
       alert('User created successfully!');
-      
+
     } catch (error) {
       console.error('Error creating user:', error);
       alert('Failed to create user. Please try again.');
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleEditUser = (user: User) => {
+    setSelectedUser(user);
+    setEditFormData({
+      name: user.displayName,
+      email: user.email,
+      role: user.role
+    });
+    setIsEditUserOpen(true);
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+
+    setUpdating(true);
+    try {
+      await updateDoc(doc(db, 'users', selectedUser.id), {
+        displayName: editFormData.name,
+        email: editFormData.email,
+        role: editFormData.role
+      });
+
+      setUsers(prev => prev.map(u =>
+        u.id === selectedUser.id
+          ? { ...u, displayName: editFormData.name, email: editFormData.email, role: editFormData.role }
+          : u
+      ));
+
+      setIsEditUserOpen(false);
+      alert('User updated successfully');
+    } catch (error) {
+      console.error('Error updating user:', error);
+      alert('Failed to update user');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleViewUser = (user: User) => {
+    setSelectedUser(user);
+    setIsViewUserOpen(true);
   };
 
   return (
@@ -227,8 +283,8 @@ export default function AdminUsers() {
                       <form onSubmit={handleCreateUser} className="space-y-4">
                         <div className="space-y-2">
                           <Label htmlFor="name">Full Name</Label>
-                          <Input 
-                            id="name" 
+                          <Input
+                            id="name"
                             placeholder="Enter full name"
                             value={formData.name}
                             onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
@@ -237,9 +293,9 @@ export default function AdminUsers() {
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="email">Email</Label>
-                          <Input 
-                            id="email" 
-                            type="email" 
+                          <Input
+                            id="email"
+                            type="email"
                             placeholder="Enter email address"
                             value={formData.email}
                             onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
@@ -347,16 +403,24 @@ export default function AdminUsers() {
                               </div>
                             </div>
                             <div className="flex gap-2">
-                              <Button size="sm" variant="outline">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleViewUser(user)}
+                              >
                                 <Eye className="h-4 w-4 mr-1" />
                                 View
                               </Button>
-                              <Button size="sm" variant="outline">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEditUser(user)}
+                              >
                                 <Edit className="h-4 w-4 mr-1" />
                                 Edit
                               </Button>
-                              <Button 
-                                size="sm" 
+                              <Button
+                                size="sm"
                                 variant="outline"
                                 onClick={() => toggleUserStatus(user.id)}
                               >
@@ -372,8 +436,8 @@ export default function AdminUsers() {
                                   </>
                                 )}
                               </Button>
-                              <Button 
-                                size="sm" 
+                              <Button
+                                size="sm"
                                 variant="outline"
                                 onClick={() => deleteUser(user.id)}
                               >
@@ -526,7 +590,7 @@ export default function AdminUsers() {
                       <span>Deactivate Selected</span>
                     </Button>
                   </div>
-                  
+
                   <div className="border rounded-lg p-4">
                     <h3 className="font-semibold mb-3">User Statistics</h3>
                     <div className="grid grid-cols-3 gap-4 text-center">
@@ -556,6 +620,118 @@ export default function AdminUsers() {
           </TabsContent>
         </Tabs>
       </div>
-    </DashboardLayout>
+
+      {/* Edit User Dialog */}
+      <Dialog open={isEditUserOpen} onOpenChange={setIsEditUserOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdateUser} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="editName">Full Name</Label>
+              <Input
+                id="editName"
+                value={editFormData.name}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, name: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editEmail">Email</Label>
+              <Input
+                id="editEmail"
+                type="email"
+                value={editFormData.email}
+                onChange={(e) => setEditFormData(prev => ({ ...prev, email: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editRole">Role</Label>
+              <Select value={editFormData.role} onValueChange={(value) => setEditFormData(prev => ({ ...prev, role: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Administrator</SelectItem>
+                  <SelectItem value="teacher">Teacher</SelectItem>
+                  <SelectItem value="student">Student</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" className="flex-1" disabled={updating}>
+                {updating ? 'Updating...' : 'Update User'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setIsEditUserOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* View User Dialog */}
+      <Dialog open={isViewUserOpen} onOpenChange={setIsViewUserOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>User Details</DialogTitle>
+          </DialogHeader>
+          {selectedUser && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 p-4 border rounded-lg bg-muted/20">
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+                  {getRoleIcon(selectedUser.role)}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg">{selectedUser.displayName}</h3>
+                  <div className="flex gap-2 mt-1">
+                    <Badge className={getRoleColor(selectedUser.role)}>
+                      {selectedUser.role.toUpperCase()}
+                    </Badge>
+                    <Badge variant={selectedUser.status === "active" ? "default" : "secondary"}>
+                      {selectedUser.status}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">User ID</Label>
+                  <p className="font-medium">{selectedUser.userId}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Email</Label>
+                  <p className="font-medium">{selectedUser.email}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Created At</Label>
+                  <p className="font-medium">{selectedUser.createdAt}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Status</Label>
+                  <p className="font-medium capitalize">{selectedUser.status}</p>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 mt-4">
+                <Button variant="outline" onClick={() => setIsViewUserOpen(false)}>
+                  Close
+                </Button>
+                <Button onClick={() => {
+                  setIsViewUserOpen(false);
+                  handleEditUser(selectedUser);
+                }}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit User
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </DashboardLayout >
   );
 }

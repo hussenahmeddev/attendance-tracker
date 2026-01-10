@@ -14,6 +14,12 @@ import {
   type StudentAttendanceSummary,
   type AttendanceStatus
 } from "@/lib/attendanceUtils";
+import { 
+  getAttendanceGrade, 
+  STATUS_COLORS, 
+  ATTENDANCE_GRADES,
+  ATTENDANCE_THRESHOLDS 
+} from "@/config/constants";
 
 export default function StudentAttendance() {
   const { userData } = useAuth();
@@ -76,23 +82,20 @@ export default function StudentAttendance() {
   const getStatusBadge = (status: AttendanceStatus) => {
     switch (status) {
       case 'present':
-        return <Badge className="bg-green-100 text-green-800">Present</Badge>;
+        return <Badge className={STATUS_COLORS.PRESENT}>Present</Badge>;
       case 'absent':
-        return <Badge className="bg-red-100 text-red-800">Absent</Badge>;
+        return <Badge className={STATUS_COLORS.ABSENT}>Absent</Badge>;
       case 'late':
-        return <Badge className="bg-yellow-100 text-yellow-800">Late</Badge>;
+        return <Badge className={STATUS_COLORS.LATE}>Late</Badge>;
       case 'excused':
-        return <Badge className="bg-blue-100 text-blue-800">Excused</Badge>;
+        return <Badge className={STATUS_COLORS.EXCUSED}>Excused</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
-  const getAttendanceGrade = (percentage: number) => {
-    if (percentage >= 95) return { grade: 'Excellent', color: 'text-green-600', bg: 'bg-green-50' };
-    if (percentage >= 85) return { grade: 'Good', color: 'text-blue-600', bg: 'bg-blue-50' };
-    if (percentage >= 75) return { grade: 'Satisfactory', color: 'text-yellow-600', bg: 'bg-yellow-50' };
-    return { grade: 'Needs Improvement', color: 'text-red-600', bg: 'bg-red-50' };
+  const getAttendanceGradeInfo = (percentage: number) => {
+    return getAttendanceGrade(percentage);
   };
 
   return (
@@ -287,29 +290,29 @@ export default function StudentAttendance() {
                   <div className="flex items-start gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
                     <div>
-                      <p className="font-medium">Excellent Attendance (95%+)</p>
-                      <p className="text-muted-foreground">Outstanding! You're setting a great example for consistent attendance.</p>
+                      <p className="font-medium">Excellent Attendance ({ATTENDANCE_THRESHOLDS.EXCELLENT}%+)</p>
+                      <p className="text-muted-foreground">{ATTENDANCE_GRADES.EXCELLENT.description}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-2">
                     <CheckCircle2 className="h-4 w-4 text-blue-600 mt-0.5" />
                     <div>
-                      <p className="font-medium">Good Attendance (85-94%)</p>
-                      <p className="text-muted-foreground">Good work! Keep maintaining regular attendance for academic success.</p>
+                      <p className="font-medium">Good Attendance ({ATTENDANCE_THRESHOLDS.GOOD}-{ATTENDANCE_THRESHOLDS.EXCELLENT - 1}%)</p>
+                      <p className="text-muted-foreground">{ATTENDANCE_GRADES.GOOD.description}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-2">
                     <Clock className="h-4 w-4 text-yellow-600 mt-0.5" />
                     <div>
-                      <p className="font-medium">Satisfactory Attendance (75-84%)</p>
-                      <p className="text-muted-foreground">Try to improve attendance. Consider speaking with your advisor if you're facing challenges.</p>
+                      <p className="font-medium">Satisfactory Attendance ({ATTENDANCE_THRESHOLDS.SATISFACTORY}-{ATTENDANCE_THRESHOLDS.GOOD - 1}%)</p>
+                      <p className="text-muted-foreground">{ATTENDANCE_GRADES.SATISFACTORY.description}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-2">
                     <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
                     <div>
-                      <p className="font-medium">Needs Improvement (Below 75%)</p>
-                      <p className="text-muted-foreground">Please speak with your advisor immediately about improving attendance.</p>
+                      <p className="font-medium">Needs Improvement (Below {ATTENDANCE_THRESHOLDS.SATISFACTORY}%)</p>
+                      <p className="text-muted-foreground">{ATTENDANCE_GRADES.NEEDS_IMPROVEMENT.description}</p>
                     </div>
                   </div>
                 </div>

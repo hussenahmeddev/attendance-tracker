@@ -17,6 +17,7 @@ import {
   XCircle,
   AlertCircle
 } from "lucide-react";
+import { STATUS_COLORS } from "@/config/constants";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -83,11 +84,11 @@ export default function StudentLeaveRequest() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'approved':
-        return <Badge className="bg-green-100 text-green-800">Approved</Badge>;
+        return <Badge className={STATUS_COLORS.APPROVED}>Approved</Badge>;
       case 'rejected':
-        return <Badge className="bg-red-100 text-red-800">Rejected</Badge>;
+        return <Badge className={STATUS_COLORS.REJECTED}>Rejected</Badge>;
       default:
-        return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
+        return <Badge className={STATUS_COLORS.PENDING}>Pending</Badge>;
     }
   };
 

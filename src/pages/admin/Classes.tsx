@@ -6,14 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  BookOpen, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Search, 
+import {
+  BookOpen,
+  Plus,
+  Edit,
+  Trash2,
+  Search,
   Users,
   Clock,
   Calendar,
@@ -27,7 +27,21 @@ import {
 import { useState, useEffect } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { fetchAllClasses, createClass, approveClassRequest, rejectClassRequest, getClassStats, type Class, type ClassFormData, enrollStudentInClass } from "@/lib/classUtils";
+import {
+  fetchAllClasses,
+  createClass,
+  approveClassRequest,
+  rejectClassRequest,
+  getClassStats,
+  type Class,
+  type ClassFormData,
+  enrollStudentInClass,
+  getStudentsForClass,
+  getAvailableStudentsForClass,
+  unenrollStudent,
+  type StudentInfo
+} from "@/lib/classUtils";
+import { toast } from "sonner";
 
 interface User {
   id: string;
@@ -50,6 +64,14 @@ export default function AdminClasses() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [enrolling, setEnrolling] = useState<string | null>(null);
   const [selectedClassForEnrollment, setSelectedClassForEnrollment] = useState<string>("");
+  const [availableStudents, setAvailableStudents] = useState<User[]>([]);
+
+  // View Details State
+  const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
+  const [selectedClassDetails, setSelectedClassDetails] = useState<Class | null>(null);
+  const [enrolledStudents, setEnrolledStudents] = useState<StudentInfo[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
   const [formData, setFormData] = useState<ClassFormData>({
     name: '',
     subject: '',
@@ -59,28 +81,24 @@ export default function AdminClasses() {
     maxStudents: ''
   });
 
-  // Fetch users and classes from Firebase
+  // Fetch users and classes
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch users
         const usersCollection = collection(db, 'users');
         const usersSnapshot = await getDocs(usersCollection);
-        const usersData = usersSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            userId: data.userId || 'N/A',
-            displayName: data.displayName || 'Unknown',
-            email: data.email || 'No email',
-            role: data.role || 'student',
-            status: data.status || 'active',
-            createdAt: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'
-          } as User;
-        });
+        const usersData = usersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          userId: doc.data().userId || 'N/A',
+          displayName: doc.data().displayName || 'Unknown',
+          email: doc.data().email || 'No email',
+          role: doc.data().role || 'student',
+          status: doc.data().status || 'active',
+          createdAt: doc.data().createdAt ? new Date(doc.data().createdAt).toLocaleDateString() : 'Unknown'
+        } as User));
         setUsers(usersData);
+        setAvailableStudents(usersData.filter(u => u.role === 'student'));
 
-        // Fetch classes using utility function
         const classesData = await fetchAllClasses();
         setClasses(classesData);
       } catch (error) {
@@ -93,26 +111,39 @@ export default function AdminClasses() {
     fetchData();
   }, []);
 
-  // Generate dynamic classes based on real data
+  // Update available students when class selection changes
+  useEffect(() => {
+    const fetchAvailable = async () => {
+      if (selectedClassForEnrollment) {
+        try {
+          const available = await getAvailableStudentsForClass(selectedClassForEnrollment);
+          // Map back to User type (simplified for now as fields match mostly)
+          const availableUsers = available.map(s => users.find(u => u.id === s.id)!).filter(Boolean);
+          setAvailableStudents(availableUsers);
+        } catch (error) {
+          console.error("Error fetching available students", error);
+        }
+      } else {
+        setAvailableStudents(users.filter(u => u.role === 'student'));
+      }
+    };
+    fetchAvailable();
+  }, [selectedClassForEnrollment, users]);
+
   const teachers = users.filter(u => u.role === 'teacher');
   const students = users.filter(u => u.role === 'student');
 
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!formData.name || !formData.subject || !formData.teacher) {
-      alert('Please fill in required fields (Name, Subject, Teacher)');
+      toast.error('Please fill in required fields');
       return;
     }
 
     setCreating(true);
     try {
       const selectedTeacher = teachers.find(t => t.id === formData.teacher);
-      
-      if (!selectedTeacher) {
-        alert('Please select a valid teacher');
-        return;
-      }
+      if (!selectedTeacher) return;
 
       const newClassData = {
         name: formData.name,
@@ -128,23 +159,16 @@ export default function AdminClasses() {
         createdAt: new Date().toISOString()
       };
 
-      // Create class using utility function
       const classId = await createClass(newClassData);
-      
-      // Add to local state
-      const localClass = {
-        id: classId,
-        ...newClassData
-      };
-      
+      const localClass = { id: classId, ...newClassData };
+
       setClasses(prev => [localClass, ...prev]);
       setFormData({ name: '', subject: '', teacher: '', grade: '', room: '', maxStudents: '' });
       setIsAddClassOpen(false);
-      alert('Class created successfully!');
-      
+      toast.success('Class created successfully!');
     } catch (error) {
       console.error('Error creating class:', error);
-      alert('Failed to create class. Please try again.');
+      toast.error('Failed to create class');
     } finally {
       setCreating(false);
     }
@@ -153,65 +177,84 @@ export default function AdminClasses() {
   const handleApproveClass = async (classId: string) => {
     try {
       await approveClassRequest(classId);
-      setClasses(prev => prev.map(cls => 
-        cls.id === classId ? { ...cls, status: 'active' as const } : cls
-      ));
-      alert('Class approved successfully!');
+      setClasses(prev => prev.map(cls => cls.id === classId ? { ...cls, status: 'active' as const } : cls));
+      toast.success('Class approved');
     } catch (error) {
       console.error('Error approving class:', error);
-      alert('Failed to approve class. Please try again.');
+      toast.error('Failed to approve');
     }
   };
 
   const handleRejectClass = async (classId: string) => {
-    if (!confirm('Are you sure you want to reject this class request? This action cannot be undone.')) {
-      return;
-    }
-    
+    if (!confirm('Reject this class request?')) return;
     try {
       await rejectClassRequest(classId);
       setClasses(prev => prev.filter(cls => cls.id !== classId));
-      alert('Class request rejected and removed.');
+      toast.success('Class rejected');
     } catch (error) {
       console.error('Error rejecting class:', error);
-      alert('Failed to reject class. Please try again.');
+      toast.error('Failed to reject');
     }
   };
 
   const handleEnrollStudent = async (studentId: string, studentUserId: string, studentName: string) => {
     if (!selectedClassForEnrollment) {
-      alert('Please select a class first');
+      toast.error('Please select a class first');
       return;
     }
 
     try {
       setEnrolling(studentId);
       await enrollStudentInClass(selectedClassForEnrollment, studentId, studentUserId, studentName);
-      
-      // Update the class student count in local state
-      setClasses(prev => prev.map(cls => 
-        cls.id === selectedClassForEnrollment 
-          ? { ...cls, students: cls.students + 1 }
-          : cls
-      ));
-      
-      alert(`Successfully enrolled ${studentName} in the selected class!`);
+
+      setClasses(prev => prev.map(cls => cls.id === selectedClassForEnrollment ? { ...cls, students: cls.students + 1 } : cls));
+
+      // Update available list immediately
+      setAvailableStudents(prev => prev.filter(s => s.id !== studentId));
+
+      toast.success(`Enrolled ${studentName}`);
     } catch (error) {
       console.error('Error enrolling student:', error);
-      if (error.message.includes('already enrolled')) {
-        alert('Student is already enrolled in this class');
-      } else {
-        alert('Failed to enroll student. Please try again.');
-      }
+      toast.error('Failed to enroll student');
     } finally {
       setEnrolling(null);
     }
   };
 
+  const handleViewDetails = async (cls: Class) => {
+    setSelectedClassDetails(cls);
+    setViewDetailsOpen(true);
+    setLoadingDetails(true);
+    try {
+      const students = await getStudentsForClass(cls.id);
+      setEnrolledStudents(students);
+    } catch (error) {
+      console.error("Error fetching class details", error);
+      toast.error("Failed to load students");
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const handleUnenroll = async (studentId: string) => {
+    if (!selectedClassDetails) return;
+    if (!confirm("Are you sure you want to unenroll this student?")) return;
+
+    try {
+      await unenrollStudent(selectedClassDetails.id, studentId);
+      setEnrolledStudents(prev => prev.filter(s => s.id !== studentId));
+      setClasses(prev => prev.map(c => c.id === selectedClassDetails.id ? { ...c, students: c.students - 1 } : c));
+      toast.success("Student unenrolled");
+    } catch (error) {
+      console.error("Error unenrolling", error);
+      toast.error("Failed to unenroll student");
+    }
+  };
+
   const filteredClasses = classes.filter(cls => {
     const matchesSearch = cls.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         cls.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         cls.teacher.toLowerCase().includes(searchTerm.toLowerCase());
+      cls.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cls.teacher.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesGrade = gradeFilter === "all" || cls.grade === gradeFilter;
     const matchesStatus = statusFilter === "all" || cls.status === statusFilter;
     return matchesSearch && matchesGrade && matchesStatus;
@@ -259,8 +302,8 @@ export default function AdminClasses() {
                       <form onSubmit={handleCreateClass} className="space-y-4">
                         <div className="space-y-2">
                           <Label htmlFor="className">Class Name *</Label>
-                          <Input 
-                            id="className" 
+                          <Input
+                            id="className"
                             placeholder="e.g., Mathematics Grade 10"
                             value={formData.name}
                             onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
@@ -269,8 +312,8 @@ export default function AdminClasses() {
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="subject">Subject *</Label>
-                          <Input 
-                            id="subject" 
+                          <Input
+                            id="subject"
                             placeholder="e.g., Mathematics"
                             value={formData.subject}
                             onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
@@ -313,8 +356,8 @@ export default function AdminClasses() {
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="room">Room</Label>
-                            <Input 
-                              id="room" 
+                            <Input
+                              id="room"
                               placeholder="Room 101"
                               value={formData.room}
                               onChange={(e) => setFormData(prev => ({ ...prev, room: e.target.value }))}
@@ -428,9 +471,9 @@ export default function AdminClasses() {
                                   <p className="text-muted-foreground">{cls.subject} • Grade {cls.grade}</p>
                                 </div>
                                 <Badge variant={
-                                  cls.status === "active" ? "default" : 
-                                  cls.status === "pending" ? "secondary" : 
-                                  "outline"
+                                  cls.status === "active" ? "default" :
+                                    cls.status === "pending" ? "secondary" :
+                                      "outline"
                                 }>
                                   {cls.status === "pending" ? "Pending" : cls.status}
                                 </Badge>
@@ -452,27 +495,21 @@ export default function AdminClasses() {
                                   <BookOpen className="h-4 w-4" />
                                   {cls.room}
                                 </div>
-                                {cls.requestedAt && (
-                                  <div className="flex items-center gap-2">
-                                    <Calendar className="h-4 w-4" />
-                                    Requested: {new Date(cls.requestedAt).toLocaleDateString()}
-                                  </div>
-                                )}
                               </div>
                               <div className="flex gap-2">
                                 {cls.status === 'pending' ? (
                                   <>
-                                    <Button 
-                                      size="sm" 
-                                      variant="default" 
+                                    <Button
+                                      size="sm"
+                                      variant="default"
                                       className="flex-1"
                                       onClick={() => handleApproveClass(cls.id)}
                                     >
                                       <CheckCircle className="h-4 w-4 mr-1" />
                                       Approve
                                     </Button>
-                                    <Button 
-                                      size="sm" 
+                                    <Button
+                                      size="sm"
                                       variant="destructive"
                                       onClick={() => handleRejectClass(cls.id)}
                                     >
@@ -481,15 +518,17 @@ export default function AdminClasses() {
                                   </>
                                 ) : (
                                   <>
-                                    <Button size="sm" variant="outline" className="flex-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex-1"
+                                      onClick={() => handleViewDetails(cls)}
+                                    >
                                       <Eye className="h-4 w-4 mr-1" />
                                       View Details
                                     </Button>
                                     <Button size="sm" variant="outline">
                                       <Edit className="h-4 w-4" />
-                                    </Button>
-                                    <Button size="sm" variant="outline">
-                                      <Settings className="h-4 w-4" />
                                     </Button>
                                   </>
                                 )}
@@ -517,8 +556,8 @@ export default function AdminClasses() {
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="fullClassName">Class Name *</Label>
-                        <Input 
-                          id="fullClassName" 
+                        <Input
+                          id="fullClassName"
                           placeholder="e.g., Advanced Mathematics Grade 12"
                           value={formData.name}
                           onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
@@ -527,8 +566,8 @@ export default function AdminClasses() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="subjectName">Subject *</Label>
-                        <Input 
-                          id="subjectName" 
+                        <Input
+                          id="subjectName"
                           placeholder="e.g., Mathematics"
                           value={formData.subject}
                           onChange={(e) => setFormData(prev => ({ ...prev, subject: e.target.value }))}
@@ -572,8 +611,8 @@ export default function AdminClasses() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="classRoom">Classroom</Label>
-                        <Input 
-                          id="classRoom" 
+                        <Input
+                          id="classRoom"
                           placeholder="e.g., Room 101, Lab 201"
                           value={formData.room}
                           onChange={(e) => setFormData(prev => ({ ...prev, room: e.target.value }))}
@@ -581,9 +620,9 @@ export default function AdminClasses() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="maxStudents">Maximum Students</Label>
-                        <Input 
-                          id="maxStudents" 
-                          type="number" 
+                        <Input
+                          id="maxStudents"
+                          type="number"
                           placeholder="30"
                           value={formData.maxStudents}
                           onChange={(e) => setFormData(prev => ({ ...prev, maxStudents: e.target.value }))}
@@ -637,7 +676,12 @@ export default function AdminClasses() {
 
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-semibold">Available Students</h3>
+                      <h3 className="font-semibold">
+                        {selectedClassForEnrollment
+                          ? `Available Students for ${classes.find(c => c.id === selectedClassForEnrollment)?.name}`
+                          : "Select a Class to Enroll Students"
+                        }
+                      </h3>
                       <div className="w-64">
                         <Label htmlFor="class-select" className="text-sm font-medium">Select Class for Enrollment</Label>
                         <Select value={selectedClassForEnrollment} onValueChange={setSelectedClassForEnrollment}>
@@ -654,10 +698,16 @@ export default function AdminClasses() {
                         </Select>
                       </div>
                     </div>
-                    {students.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-4">No students registered yet</p>
+                    {availableStudents.length === 0 ? (
+                      <div className="text-center py-8">
+                        {selectedClassForEnrollment ? (
+                          <p className="text-muted-foreground">All students are already enrolled!</p>
+                        ) : (
+                          <p className="text-muted-foreground">Please select a class above to see available students.</p>
+                        )}
+                      </div>
                     ) : (
-                      students.slice(0, 10).map((student) => (
+                      availableStudents.slice(0, 10).map((student) => (
                         <div key={student.id} className="flex items-center justify-between p-3 border rounded-lg">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
@@ -669,8 +719,8 @@ export default function AdminClasses() {
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => handleEnrollStudent(student.id, student.userId, student.displayName)}
                               disabled={!selectedClassForEnrollment || enrolling === student.id}
@@ -728,6 +778,57 @@ export default function AdminClasses() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* View Details Dialog */}
+      <Dialog open={viewDetailsOpen} onOpenChange={setViewDetailsOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Class Details: {selectedClassDetails?.name}</DialogTitle>
+            <DialogDescription>
+              {selectedClassDetails?.subject} • {selectedClassDetails?.schedule} • {selectedClassDetails?.room}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            <h3 className="font-semibold mb-3">Enrolled Students ({enrolledStudents.length})</h3>
+            {loadingDetails ? (
+              <div className="flex justify-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+              </div>
+            ) : enrolledStudents.length === 0 ? (
+              <p className="text-center text-muted-foreground py-4">No students enrolled yet.</p>
+            ) : (
+              <div className="grid gap-2 max-h-[300px] overflow-y-auto">
+                {enrolledStudents.map((student) => (
+                  <div key={student.id} className="flex items-center justify-between p-3 border rounded bg-muted/20">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-xs">
+                        {student.displayName.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-medium">{student.displayName}</div>
+                        <div className="text-xs text-muted-foreground">{student.userId}</div>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => handleUnenroll(student.id)}
+                    >
+                      <UserMinus className="h-4 w-4 mr-1" />
+                      Unenroll
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setViewDetailsOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

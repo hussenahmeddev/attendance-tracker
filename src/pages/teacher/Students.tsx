@@ -7,6 +7,7 @@ import { GraduationCap, Users, Eye, TrendingUp } from "lucide-react";
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { PLACEHOLDER_RANGES, DEFAULT_VALUES } from "@/config/constants";
 
 interface Student {
   id: string;
@@ -68,7 +69,7 @@ export default function TeacherStudents() {
   const getAttendancePercentage = (student: Student) => {
     // Placeholder attendance calculation
     const hash = student.displayName.length * 7 + student.userId.length * 3;
-    return Math.max(60, Math.min(95, hash % 36 + 60));
+    return Math.max(PLACEHOLDER_RANGES.MIN_ATTENDANCE, Math.min(PLACEHOLDER_RANGES.MAX_ATTENDANCE, hash % PLACEHOLDER_RANGES.ATTENDANCE_RANGE + PLACEHOLDER_RANGES.MIN_ATTENDANCE));
   };
   return (
     <DashboardLayout
@@ -165,9 +166,9 @@ export default function TeacherStudents() {
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
                       <p className="text-2xl font-bold text-green-600">
-                        {students.length > 0 
-                          ? Math.round(students.reduce((acc, student) => acc + getAttendancePercentage(student), 0) / students.length)
-                          : 0}%
+                        {students.length > DEFAULT_VALUES.STUDENT_COUNT 
+                          ? Math.round(students.reduce((acc, student) => acc + getAttendancePercentage(student), DEFAULT_VALUES.ATTENDANCE_RATE) / students.length)
+                          : DEFAULT_VALUES.ATTENDANCE_RATE}%
                       </p>
                       <p className="text-sm text-muted-foreground">Average Attendance</p>
                     </div>
