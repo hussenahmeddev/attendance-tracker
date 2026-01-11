@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { getAttendanceStatistics } from "@/lib/attendanceUtils";
+import { getAttendanceStatistics, fetchAttendanceByDateAndClass } from "@/lib/attendanceUtils";
 import { Users, BookOpen, TrendingUp, AlertTriangle } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -33,8 +33,16 @@ export default function AdminDashboard() {
         const totalStudents = users.filter(u => u.role === 'student').length;
         const totalTeachers = users.filter(u => u.role === 'teacher').length;
 
-        // Fetch attendance statistics (all time)
+        // Fetch attendance statistics (all time) for overall rate
         const attendanceStats = await getAttendanceStatistics();
+
+        // Fetch TODAY'S attendance specifically for the "Today" cards
+        const today = new Date().toISOString().split('T')[0];
+        const todaysRecords = await fetchAttendanceByDateAndClass(today);
+
+        const presentToday = todaysRecords.filter(r => r.status === 'present').length;
+        const absentToday = todaysRecords.filter(r => r.status === 'absent').length;
+        const lateToday = todaysRecords.filter(r => r.status === 'late').length;
 
         setStats({
           totalUsers,
@@ -42,9 +50,9 @@ export default function AdminDashboard() {
           totalTeachers,
           overallAttendance: attendanceStats.attendanceRate,
           totalClasses: attendanceStats.uniqueClasses,
-          presentCount: attendanceStats.presentCount,
-          absentCount: attendanceStats.absentCount,
-          lateCount: attendanceStats.lateCount
+          presentCount: presentToday,
+          absentCount: absentToday,
+          lateCount: lateToday
         });
       } catch (error) {
         console.error('Error fetching dashboard data:', error);

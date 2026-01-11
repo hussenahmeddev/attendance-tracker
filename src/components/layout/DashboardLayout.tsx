@@ -27,21 +27,19 @@ export function DashboardLayout({
   const { userData } = useAuth();
 
   // Role-based styling
+  // Role-based styling
   const roleStyles = {
     admin: {
-      bg: "bg-red-50/30",
-      border: "border-red-200",
-      indicator: "bg-red-500"
+      sidebar: "bg-red-950 border-red-900", // Dark Red Sidebar
+      indicator: "bg-red-600"
     },
     teacher: {
-      bg: "bg-blue-50/30",
-      border: "border-blue-200",
-      indicator: "bg-blue-500"
+      sidebar: "bg-blue-950 border-blue-900", // Dark Blue Sidebar
+      indicator: "bg-blue-600"
     },
     student: {
-      bg: "bg-green-50/30",
-      border: "border-green-200",
-      indicator: "bg-green-500"
+      sidebar: "bg-emerald-950 border-emerald-900", // Dark Green Sidebar
+      indicator: "bg-emerald-600"
     }
   };
 
@@ -54,18 +52,19 @@ export function DashboardLayout({
 
 
   return (
-    <div className={`min-h-screen flex ${currentStyle.bg}`}>
+    <div className="min-h-screen flex bg-slate-50">
       <DashboardSidebar
         role={role}
         userName={displayName}
         userEmail={email}
+        className={`${currentStyle.sidebar} text-white`}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header */}
-        <header className={`sticky top-0 z-30 flex h-16 items-center justify-between border-b ${currentStyle.border} bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6`}>
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 px-6 shadow-sm">
           <div className="flex items-center gap-4">
-            <div className={`w-2 h-8 rounded-full ${currentStyle.indicator} mr-2`} />
+            <div className={`w-1.5 h-6 rounded-full ${currentStyle.indicator} mr-2`} />
             {pageTitle && (
               <div>
                 <h1 className="text-xl font-semibold">{pageTitle}</h1>

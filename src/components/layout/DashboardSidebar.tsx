@@ -70,9 +70,10 @@ interface DashboardSidebarProps {
   role: UserRole;
   userName?: string;
   userEmail?: string;
+  className?: string;
 }
 
-export function DashboardSidebar({ role, userName = "User", userEmail = "" }: DashboardSidebarProps) {
+export function DashboardSidebar({ role, userName = "User", userEmail = "", className }: DashboardSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -98,7 +99,8 @@ export function DashboardSidebar({ role, userName = "User", userEmail = "" }: Da
     <aside
       className={cn(
         "flex h-screen flex-col bg-sidebar border-r border-sidebar-border transition-all duration-300 shrink-0",
-        collapsed ? "w-20" : "w-64"
+        collapsed ? "w-20" : "w-64",
+        className
       )}
     >
       {/* Logo */}
