@@ -1,5 +1,6 @@
 import { collection, addDoc, getDocs, query, where, updateDoc, doc, deleteDoc } from "firebase/firestore";
 import { db } from "./firebase";
+import { saveOfflineAttendance } from "./offlineStorage";
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 
@@ -67,10 +68,10 @@ export const checkExistingAttendance = async (
     );
 
     const snapshot = await getDocs(q);
-    
+
     // Filter by date in memory
     const existing = snapshot.docs.find(doc => doc.data().date === date);
-    
+
     if (!existing) {
       return null;
     }
@@ -89,12 +90,12 @@ export const checkExistingAttendance = async (
         where('studentId', '==', studentId),
         where('date', '==', date)
       );
-      
+
       const snapshot = await getDocs(q);
       const existing = snapshot.docs.find(doc => doc.data().classId === classId);
-      
+
       if (!existing) return null;
-      
+
       return {
         id: existing.id,
         ...existing.data()
@@ -110,8 +111,24 @@ export const checkExistingAttendance = async (
  * Save or update attendance record
  */
 export const saveAttendanceRecord = async (attendanceData: Omit<AttendanceRecord, 'id'>): Promise<string> => {
+  // If offline, bypass existence check and save to local queue
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    try {
+      const timestamp = new Date().toISOString();
+      await saveOfflineAttendance({
+        ...attendanceData,
+        sessionId: (attendanceData as any).sessionId || 'unknown',
+        timestamp
+      });
+      console.log(`Offline: Saved attendance for ${attendanceData.studentName} locally`);
+      return `offline-${Date.now()}`;
+    } catch (offlineError) {
+      console.error('Failed to save offline attendance:', offlineError);
+    }
+  }
+
   try {
-    // Check if attendance already exists
+    // Check if attendance already exists (Online only)
     const existing = await checkExistingAttendance(
       attendanceData.studentId,
       attendanceData.classId,
@@ -134,8 +151,19 @@ export const saveAttendanceRecord = async (attendanceData: Omit<AttendanceRecord
       return docRef.id;
     }
   } catch (error) {
-    console.error('Error saving attendance record:', error);
-    throw error;
+    console.warn('Firestore operation failed, falling back to local storage:', error);
+    try {
+      const timestamp = new Date().toISOString();
+      await saveOfflineAttendance({
+        ...attendanceData,
+        sessionId: (attendanceData as any).sessionId || 'unknown',
+        timestamp
+      });
+      return `offline-${Date.now()}`;
+    } catch (fallbackError) {
+      console.error('Double failure in saveAttendanceRecord:', fallbackError);
+      throw error;
+    }
   }
 };
 
@@ -159,7 +187,7 @@ export const createAttendanceSession = async (
     });
 
     const today = new Date().toISOString().split('T')[0];
-    
+
     const sessionData = {
       classId,
       className,
@@ -175,7 +203,7 @@ export const createAttendanceSession = async (
       status: 'active' as const,
       createdAt: new Date().toISOString()
     };
-    
+
     const docRef = await addDoc(collection(db, 'attendanceSessions'), sessionData);
     return docRef.id;
   } catch (error) {
@@ -198,28 +226,54 @@ export const markAttendance = async (
   status: AttendanceStatus,
   notes?: string
 ): Promise<string> => {
+  const today = new Date().toISOString().split('T')[0];
+  const timestamp = new Date().toISOString();
+
+  const attendanceData = {
+    sessionId,
+    classId,
+    className,
+    teacherId,
+    teacherName,
+    studentId,
+    studentName,
+    date: today,
+    status,
+    notes: notes || '',
+    markedAt: timestamp
+  };
+
+  // If offline, store locally
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    try {
+      await saveOfflineAttendance({
+        ...attendanceData,
+        timestamp
+      });
+      console.log(`Offline: Saved attendance for ${studentName} locally`);
+      return `offline-${Date.now()}`;
+    } catch (offlineError) {
+      console.error('Failed to save offline attendance:', offlineError);
+    }
+  }
+
+  // If online, try Firestore
   try {
-    const today = new Date().toISOString().split('T')[0];
-    
-    const attendanceData = {
-      sessionId,
-      classId,
-      className,
-      teacherId,
-      teacherName,
-      studentId,
-      studentName,
-      date: today,
-      status,
-      notes: notes || '',
-      markedAt: new Date().toISOString()
-    };
-    
     const docRef = await addDoc(collection(db, 'attendance'), attendanceData);
     return docRef.id;
   } catch (error) {
-    console.error('Error in markAttendance:', error);
-    throw error;
+    console.warn('Firestore write failed, falling back to local storage:', error);
+    // Fallback if network is flickery or permission fails
+    try {
+      await saveOfflineAttendance({
+        ...attendanceData,
+        timestamp
+      });
+      return `offline-${Date.now()}`;
+    } catch (fallbackError) {
+      console.error('Double failure in markAttendance:', fallbackError);
+      throw error;
+    }
   }
 };
 
@@ -253,7 +307,7 @@ export const completeAttendanceSession = async (
 ): Promise<void> => {
   try {
     const sessionRef = doc(db, 'attendanceSessions', sessionId);
-    
+
     const totalStudents = attendanceRecords.length;
     const presentCount = attendanceRecords.filter(r => r.status === 'present').length;
     const absentCount = attendanceRecords.filter(r => r.status === 'absent').length;
@@ -307,7 +361,7 @@ export const fetchAttendanceByDateAndClass = async (
     return records.sort((a, b) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime());
   } catch (error) {
     console.error('Error fetching attendance records:', error);
-    
+
     // Fallback: fetch all for date then filter by class in memory
     // This helps if the composite index (date + classId) is missing
     if (classId) {
@@ -320,13 +374,13 @@ export const fetchAttendanceByDateAndClass = async (
         const records = snapshot.docs
           .map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord))
           .filter(r => r.classId === classId);
-          
+
         return records.sort((a, b) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime());
       } catch (fbError) {
         console.error('Fallback fetch failed:', fbError);
       }
     }
-    
+
     throw error;
   }
 };
@@ -420,7 +474,7 @@ export const fetchAllAttendance = async (
     // Fetch all records, no orderBy at query level to be safe
     const attendanceCollection = collection(db, 'attendance');
     const snapshot = await getDocs(attendanceCollection);
-    
+
     let records = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -457,15 +511,15 @@ export const calculateStudentAttendanceSummary = async (
 ): Promise<StudentAttendanceSummary> => {
   try {
     const records = await fetchStudentAttendance(studentId, startDate, endDate);
-    
+
     const totalClasses = records.length;
     const presentCount = records.filter(r => r.status === 'present').length;
     const absentCount = records.filter(r => r.status === 'absent').length;
     const lateCount = records.filter(r => r.status === 'late').length;
     const excusedCount = records.filter(r => r.status === 'excused').length;
-    
-    const attendancePercentage = totalClasses > 0 
-      ? Math.round(((presentCount + lateCount) / totalClasses) * 100) 
+
+    const attendancePercentage = totalClasses > 0
+      ? Math.round(((presentCount + lateCount) / totalClasses) * 100)
       : 0;
 
     const lastAttendance = records.length > 0 ? records[0].date : undefined;
@@ -523,9 +577,9 @@ export const getAttendanceStatistics = async (
     const absentCount = records.filter(r => r.status === 'absent').length;
     const lateCount = records.filter(r => r.status === 'late').length;
     const excusedCount = records.filter(r => r.status === 'excused').length;
-    
-    const attendanceRate = totalRecords > 0 
-      ? Math.round(((presentCount + lateCount) / totalRecords) * 100) 
+
+    const attendanceRate = totalRecords > 0
+      ? Math.round(((presentCount + lateCount) / totalRecords) * 100)
       : 0;
 
     const uniqueStudents = new Set(records.map(r => r.studentId)).size;
@@ -570,14 +624,14 @@ export const getAttendanceCalendarData = async (
   try {
     const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
     const endDate = `${year}-${String(month + 1).padStart(2, '0')}-31`;
-    
+
     const records = await fetchStudentAttendance(studentId, startDate, endDate);
-    
+
     const calendarData: Record<string, AttendanceStatus> = {};
     records.forEach(record => {
       calendarData[record.date] = record.status;
     });
-    
+
     return calendarData;
   } catch (error) {
     console.error('Error getting calendar attendance data:', error);
@@ -602,19 +656,19 @@ export const getAttendanceTrends = async (
   try {
     const trends = [];
     const today = new Date();
-    
+
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
       const dateString = date.toISOString().split('T')[0];
-      
+
       const records = await fetchAttendanceByDateAndClass(dateString, classId);
-      
+
       let filteredRecords = records;
       if (teacherId) {
         filteredRecords = records.filter(r => r.teacherId === teacherId);
       }
-      
+
       trends.push({
         date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         present: filteredRecords.filter(r => r.status === 'present').length,
@@ -623,7 +677,7 @@ export const getAttendanceTrends = async (
         excused: filteredRecords.filter(r => r.status === 'excused').length,
       });
     }
-    
+
     return trends;
   } catch (error) {
     console.error('Error getting attendance trends:', error);
