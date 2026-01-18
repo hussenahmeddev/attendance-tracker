@@ -14,7 +14,8 @@ createRoot(document.getElementById("root")!).render(
 );
 
 // Register Service Worker
-if ('serviceWorker' in navigator) {
+// Register Service Worker only in production
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
       .then((registration) => {
@@ -23,5 +24,13 @@ if ('serviceWorker' in navigator) {
       .catch((registrationError) => {
         console.log('SW registration failed: ', registrationError);
       });
+  });
+} else if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+  // Unregister service worker in development to avoid caching issues
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const registration of registrations) {
+      registration.unregister();
+      console.log('SW unregistered in dev mode');
+    }
   });
 }

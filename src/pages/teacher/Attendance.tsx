@@ -19,6 +19,7 @@ import {
   completeAttendanceSession,
   fetchAttendanceByDateAndClass,
   saveAttendanceRecord,
+  getLocalYMD,
   type AttendanceStatus,
   type AttendanceRecord
 } from "@/lib/attendanceUtils";
@@ -46,7 +47,7 @@ export default function TeacherAttendance() {
   const [saving, setSaving] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [existingAttendance, setExistingAttendance] = useState<AttendanceRecord[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(getLocalYMD());
 
   // Fetch students and teacher's classes
   useEffect(() => {
@@ -292,7 +293,7 @@ export default function TeacherAttendance() {
                       type="date"
                       value={selectedDate}
                       onChange={(e) => setSelectedDate(e.target.value)}
-                      max={new Date().toISOString().split('T')[0]}
+                      max={getLocalYMD()}
                     />
                   </div>
                 </div>

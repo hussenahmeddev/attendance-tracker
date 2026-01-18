@@ -1,4 +1,4 @@
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, increment, getCountFromServer } from "firebase/firestore";
 import { db } from "./firebase";
 
 export interface Class {
@@ -202,7 +202,6 @@ export const getStudentsForClass = async (classId: string): Promise<StudentInfo[
     const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
 
     if (enrollmentsSnapshot.empty) {
-      console.log(`No enrollments found for class ${classId}`);
       return [];
     }
 
@@ -267,16 +266,9 @@ export const enrollStudentInClass = async (classId: string, studentId: string, s
 
     await addDoc(enrollmentsCollection, enrollment);
 
-    // Update class student count
+    // Update class student count atomically
     const classRef = doc(db, 'classes', classId);
-    const classesCollection = collection(db, 'classes');
-    const classQuery = query(classesCollection, where('__name__', '==', classId));
-    const classSnapshot = await getDocs(classQuery);
-
-    if (!classSnapshot.empty) {
-      const currentStudents = classSnapshot.docs[0].data().students || 0;
-      await updateDoc(classRef, { students: currentStudents + 1 });
-    }
+    await updateDoc(classRef, { students: increment(1) });
   } catch (error) {
     console.error('Error enrolling student:', error);
     throw error;
@@ -332,20 +324,16 @@ export const unenrollStudent = async (classId: string, studentId: string): Promi
       throw new Error('Enrollment not found');
     }
 
-    // 2. Delete or update status
-    // Deleting for now to keep it simple
+    const deletedCount = snapshot.size;
+
+    // 2. Delete all matching records
     for (const doc of snapshot.docs) {
       await deleteDoc(doc.ref);
     }
 
-    // 3. Update class student count
+    // 3. Update class student count atomically
     const classRef = doc(db, 'classes', classId);
-    const classDoc = await getDocs(query(collection(db, 'classes'), where('__name__', '==', classId)));
-
-    if (!classDoc.empty) {
-      const currentStudents = classDoc.docs[0].data().students || 0;
-      await updateDoc(classRef, { students: Math.max(0, currentStudents - 1) });
-    }
+    await updateDoc(classRef, { students: increment(-deletedCount) });
 
   } catch (error) {
     console.error('Error unenrolling student:', error);
@@ -400,5 +388,37 @@ export const getEnrolledClassesForStudent = async (studentUserId: string): Promi
   } catch (error) {
     console.error('Error fetching student classes:', error);
     return [];
+  }
+};
+
+/**
+ * Fix class student counters
+ */
+export const fixClassEnrollmentCounts = async () => {
+  try {
+    const classes = await fetchAllClasses();
+    let fixedCount = 0;
+
+    for (const cls of classes) {
+      // Count actual active enrollments
+      const enrollmentsQuery = query(
+        collection(db, 'enrollments'),
+        where('classId', '==', cls.id),
+        where('status', '==', 'active')
+      );
+      const snapshot = await getCountFromServer(enrollmentsQuery);
+      const actualCount = snapshot.data().count;
+
+      // Update if different
+      if (actualCount !== cls.students) {
+        console.log(`Fixing class ${cls.name}: ${cls.students} -> ${actualCount}`);
+        await updateDoc(doc(db, 'classes', cls.id), { students: actualCount });
+        fixedCount++;
+      }
+    }
+    return fixedCount;
+  } catch (error) {
+    console.error('Error fixing class enrollment counts:', error);
+    throw error;
   }
 };

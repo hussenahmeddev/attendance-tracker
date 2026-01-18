@@ -6,19 +6,19 @@ import { AttendanceCalendar } from "@/components/attendance/AttendanceCalendar";
 import { Calendar, CheckCircle2, XCircle, Clock, TrendingUp, AlertCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { 
-  fetchStudentAttendance, 
-  calculateStudentAttendanceSummary, 
+import {
+  fetchStudentAttendance,
+  calculateStudentAttendanceSummary,
   getAttendanceCalendarData,
   type AttendanceRecord,
   type StudentAttendanceSummary,
   type AttendanceStatus
 } from "@/lib/attendanceUtils";
-import { 
-  getAttendanceGrade, 
-  STATUS_COLORS, 
+import {
+  getAttendanceGrade,
+  STATUS_COLORS,
   ATTENDANCE_GRADES,
-  ATTENDANCE_THRESHOLDS 
+  ATTENDANCE_THRESHOLDS
 } from "@/config/constants";
 
 export default function StudentAttendance() {
@@ -32,28 +32,28 @@ export default function StudentAttendance() {
   useEffect(() => {
     const fetchAttendanceData = async () => {
       if (!userData?.userId) return;
-      
+
       try {
         // Fetch recent attendance records (last 30 days)
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         const startDate = thirtyDaysAgo.toISOString().split('T')[0];
-        
+
         const records = await fetchStudentAttendance(userData.userId, startDate);
         setAttendanceRecords(records);
-        
+
         // Calculate attendance summary
         const summary = await calculateStudentAttendanceSummary(userData.userId);
         setAttendanceSummary(summary);
-        
+
         // Get calendar data for current month
         const calData = await getAttendanceCalendarData(
-          userData.userId, 
-          currentDate.getFullYear(), 
+          userData.userId,
+          currentDate.getFullYear(),
           currentDate.getMonth()
         );
         setCalendarData(calData);
-        
+
       } catch (error) {
         console.error('Error fetching attendance data:', error);
       } finally {
@@ -123,7 +123,7 @@ export default function StudentAttendance() {
                   <div className="text-2xl font-bold text-blue-600">
                     {attendanceSummary?.attendancePercentage || 0}%
                   </div>
-                  <p className="text-sm text-muted-foreground">Overall Attendance</p>
+                  <p className="text-sm text-muted-foreground">Overall Performance</p>
                 </CardContent>
               </Card>
               <Card>
@@ -168,6 +168,7 @@ export default function StudentAttendance() {
                         <h3 className="font-semibold">Current Performance</h3>
                         <p className="text-sm text-muted-foreground">
                           {attendanceSummary.presentCount + attendanceSummary.lateCount} out of {attendanceSummary.totalClasses} classes attended
+                          {attendanceSummary.lateCount > 0 && <span className="block text-[10px] text-yellow-600 mt-1">* Late arrivals count as 50% for performance score</span>}
                         </p>
                       </div>
                       <div className="text-right">
@@ -177,7 +178,7 @@ export default function StudentAttendance() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <h4 className="font-medium">Breakdown</h4>
@@ -200,11 +201,11 @@ export default function StudentAttendance() {
                           </div>
                         </div>
                       </div>
-                      
+
                       <div className="space-y-2">
                         <h4 className="font-medium">Last Attendance</h4>
                         <p className="text-sm text-muted-foreground">
-                          {attendanceSummary.lastAttendance 
+                          {attendanceSummary.lastAttendance
                             ? new Date(attendanceSummary.lastAttendance).toLocaleDateString()
                             : 'No records yet'
                           }
@@ -225,7 +226,7 @@ export default function StudentAttendance() {
             </Card>
 
             {/* Attendance Calendar */}
-            <AttendanceCalendar 
+            <AttendanceCalendar
               attendanceData={calendarData}
               className="w-full"
             />
@@ -313,6 +314,15 @@ export default function StudentAttendance() {
                     <div>
                       <p className="font-medium">Needs Improvement (Below {ATTENDANCE_THRESHOLDS.SATISFACTORY}%)</p>
                       <p className="text-muted-foreground">{ATTENDANCE_GRADES.NEEDS_IMPROVEMENT.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 pt-2 border-t">
+                    <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <p className="font-medium">Performance Scoring</p>
+                      <p className="text-muted-foreground">
+                        Present: 1.0pt | Excused: 1.0pt | Late: 0.5pt | Absent: 0pt
+                      </p>
                     </div>
                   </div>
                 </div>

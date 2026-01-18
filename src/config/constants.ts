@@ -11,6 +11,14 @@ export const ATTENDANCE_THRESHOLDS = {
   LOW_ATTENDANCE_ALERT: 80,
 } as const;
 
+// Attendance Weights (for percentage calculation)
+export const ATTENDANCE_WEIGHTS = {
+  PRESENT: 1.0,
+  LATE: 0.5,
+  EXCUSED: 1.0,
+  ABSENT: 0.0,
+} as const;
+
 // Attendance Grades
 export const ATTENDANCE_GRADES = {
   EXCELLENT: {

@@ -39,6 +39,7 @@ import {
   getStudentsForClass,
   getAvailableStudentsForClass,
   unenrollStudent,
+  updateClass,
   type StudentInfo
 } from "@/lib/classUtils";
 import { toast } from "sonner";
@@ -228,6 +229,18 @@ export default function AdminClasses() {
     try {
       const students = await getStudentsForClass(cls.id);
       setEnrolledStudents(students);
+
+      // Lazy Repair: Check if count matches
+      if (students.length !== cls.students) {
+        console.log(`Lazy repairing class ${cls.name}: ${cls.students} -> ${students.length}`);
+        await updateClass(cls.id, { students: students.length });
+
+        // Update local state immediately
+        setClasses(prev => prev.map(c => c.id === cls.id ? { ...c, students: students.length } : c));
+
+        // Provide subtle feedback
+        toast.info("Class statistics updated");
+      }
     } catch (error) {
       console.error("Error fetching class details", error);
       toast.error("Failed to load students");

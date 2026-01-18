@@ -20,6 +20,7 @@ import TeacherAttendance from "./pages/teacher/Attendance";
 import TeacherStudents from "./pages/teacher/Students";
 import TeacherReports from "./pages/teacher/Reports";
 import TeacherSchedule from "./pages/teacher/Schedule";
+import TeacherLeaves from "./pages/teacher/Leaves";
 import StudentDashboard from "./pages/student/StudentDashboard";
 import StudentAttendance from "./pages/student/Attendance";
 import StudentLeaveRequest from "./pages/student/LeaveRequest";
@@ -154,6 +155,14 @@ const App = () => {
               element={
                 <ProtectedRoute requiredRole="teacher">
                   <TeacherSchedule />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/teacher/leaves"
+              element={
+                <ProtectedRoute requiredRole="teacher">
+                  <TeacherLeaves />
                 </ProtectedRoute>
               }
             />

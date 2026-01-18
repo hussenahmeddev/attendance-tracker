@@ -8,7 +8,8 @@ import { BarChart3, TrendingUp, FileText, Download, Calendar } from "lucide-reac
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { DEFAULT_VALUES, calculateRegularAttendees, calculateNeedsAttention, STATUS_COLORS } from "@/config/constants";
+import { DEFAULT_VALUES, calculateRegularAttendees, calculateNeedsAttention, STATUS_COLORS, ATTENDANCE_WEIGHTS } from "@/config/constants";
+import { getAttendanceStatistics } from "@/lib/attendanceUtils";
 import { useReportGenerator } from "@/hooks/useReportGenerator";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
@@ -31,6 +32,9 @@ export default function TeacherReports() {
   const [loading, setLoading] = useState(true);
   const [reportType, setReportType] = useState("summary");
   const [period, setPeriod] = useState("week");
+  const [weeklyStats, setWeeklyStats] = useState(0);
+  const [monthlyStats, setMonthlyStats] = useState(0);
+  const [semesterStats, setSemesterStats] = useState(0);
 
   // Fetch users from Firebase
   useEffect(() => {
@@ -61,23 +65,116 @@ export default function TeacherReports() {
     fetchUsers();
   }, []);
 
-  const students = users.filter(u => u.role === 'student');
+  const [classStudents, setClassStudents] = useState<User[]>([]);
 
-  // Generate reports based on real data - empty until attendance system is active
+  // Fetch teacher's enrolled students specifically
+  useEffect(() => {
+    const fetchTeacherStudents = async () => {
+      if (!userData?.userId) return;
+      try {
+        const { fetchTeacherClasses, getStudentsForClass } = await import("@/lib/classUtils");
+        const teacherClasses = await fetchTeacherClasses(userData.userId);
+        const studentIds = new Set<string>();
+        const studentList: User[] = [];
+
+        for (const cls of teacherClasses) {
+          const enrolls = await getStudentsForClass(cls.id);
+          enrolls.forEach(s => {
+            if (!studentIds.has(s.userId)) {
+              studentIds.add(s.userId);
+              const fullUser = users.find(u => u.userId === s.userId || u.id === s.id);
+              if (fullUser) studentList.push(fullUser);
+              else studentList.push(s as any);
+            }
+          });
+        }
+        setClassStudents(studentList);
+      } catch (err) {
+        console.error("Error fetching teacher students:", err);
+      }
+    };
+    if (users.length > 0) fetchTeacherStudents();
+  }, [userData, users]);
+
+  // Fetch real report statistics
+  useEffect(() => {
+    const fetchReportStats = async () => {
+      if (!userData?.userId || !userData?.uid) return;
+
+      try {
+        const today = new Date();
+        const toLocalYMD = (d: Date) => {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+
+        // Fetch ALL attendance and filter in memory to avoid ID/timezone issues
+        const { fetchAllAttendance } = await import("@/lib/attendanceUtils");
+        const allAttendance = await fetchAllAttendance();
+
+        // Filter for this teacher (either by display ID or doc ID)
+        const myAttendance = allAttendance.filter(r =>
+          r.teacherId === userData.userId || r.teacherId === userData.uid
+        );
+
+        // Date markers
+        // This Week (Sunday start)
+        const sunday = new Date(today);
+        sunday.setDate(today.getDate() - today.getDay());
+        const startWeek = toLocalYMD(sunday);
+
+        // This Month
+        const startMonth = toLocalYMD(new Date(today.getFullYear(), today.getMonth(), 1));
+
+        // This Semester
+        const startSemesterDate = new Date(today);
+        startSemesterDate.setMonth(today.getMonth() - 6);
+        const startSemester = toLocalYMD(startSemesterDate);
+
+        const calcRate = (records: any[]) => {
+          if (records.length === 0) return 0;
+          const present = records.filter(r => r.status === 'present').length;
+          const late = records.filter(r => r.status === 'late').length;
+          const excused = records.filter(r => r.status === 'excused').length;
+
+          return Math.round((
+            (present * ATTENDANCE_WEIGHTS.PRESENT) +
+            (late * ATTENDANCE_WEIGHTS.LATE) +
+            (excused * ATTENDANCE_WEIGHTS.EXCUSED)
+          ) / records.length * 100);
+        };
+
+        setWeeklyStats(calcRate(myAttendance.filter(r => r.date >= startWeek)));
+        setMonthlyStats(calcRate(myAttendance.filter(r => r.date >= startMonth)));
+        setSemesterStats(calcRate(myAttendance.filter(r => r.date >= startSemester)));
+
+      } catch (error) {
+        console.error('Error fetching report stats:', error);
+      }
+    };
+
+    fetchReportStats();
+  }, [userData]);
+
+  const displayStudents = classStudents.length > 0 ? classStudents : users.filter(u => u.role === 'student');
+
+  // Generate reports based on real data
   const reports = [
     {
       period: "This Week",
-      attendance: DEFAULT_VALUES.ATTENDANCE_RATE,
+      attendance: weeklyStats,
       trend: "up"
     },
     {
       period: "This Month",
-      attendance: DEFAULT_VALUES.ATTENDANCE_RATE,
+      attendance: monthlyStats,
       trend: "up"
     },
     {
       period: "This Semester",
-      attendance: DEFAULT_VALUES.ATTENDANCE_RATE,
+      attendance: semesterStats,
       trend: "up"
     }
   ];
@@ -227,18 +324,18 @@ export default function TeacherReports() {
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="text-center p-4 border rounded-lg">
-                    <div className="text-2xl font-bold text-blue-600">{students.length}</div>
+                    <div className="text-2xl font-bold text-blue-600">{displayStudents.length}</div>
                     <p className="text-sm text-muted-foreground">Total Students</p>
                   </div>
                   <div className="text-center p-4 border rounded-lg">
                     <div className="text-2xl font-bold text-green-600">
-                      {calculateRegularAttendees(students.length)}
+                      {weeklyStats >= 85 && displayStudents.length > 0 ? displayStudents.length : 0}
                     </div>
                     <p className="text-sm text-muted-foreground">Regular Attendees</p>
                   </div>
                   <div className="text-center p-4 border rounded-lg">
                     <div className="text-2xl font-bold text-yellow-600">
-                      {calculateNeedsAttention(students.length)}
+                      {weeklyStats < 80 && displayStudents.length > 0 ? displayStudents.length : 0}
                     </div>
                     <p className="text-sm text-muted-foreground">Need Attention</p>
                   </div>
@@ -256,7 +353,7 @@ export default function TeacherReports() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {students.length === 0 ? (
+                  {displayStudents.length === 0 ? (
                     <p className="text-center text-muted-foreground py-4">
                       No students enrolled yet. Reports will appear once students are registered.
                     </p>

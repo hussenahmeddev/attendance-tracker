@@ -18,7 +18,8 @@ import {
   Plus,
   Eye,
   Edit,
-  BarChart3
+  BarChart3,
+  ChevronRight
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
@@ -256,14 +257,40 @@ export default function TeacherDashboard() {
         {/* User Profile */}
         <UserProfile />
 
+        {/* Leave Alerts */}
+        {leaveRequests.filter(r => r.status === 'pending').length > 0 && (
+          <Card className="border-yellow-200 bg-yellow-50/50">
+            <CardContent className="p-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-yellow-100 rounded-full">
+                  <AlertCircle className="h-5 w-5 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="font-bold text-yellow-900">
+                    {leaveRequests.filter(r => r.status === 'pending').length} Pending Leave Requests
+                  </p>
+                  <p className="text-xs text-yellow-700">Students are waiting for your approval</p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-yellow-700 hover:bg-yellow-100"
+                onClick={() => window.location.href = '/teacher/leaves'}
+              >
+                Review Now <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Main Functionality Tabs */}
         <Tabs defaultValue="classes" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="classes">My Classes</TabsTrigger>
             <TabsTrigger value="attendance">Take Attendance</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
             <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="leave">Leave Requests</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
           </TabsList>
 
@@ -553,107 +580,7 @@ export default function TeacherDashboard() {
             </Card>
           </TabsContent>
 
-          {/* Leave Requests Tab */}
-          <TabsContent value="leave" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Leave Requests from Students
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {leaveLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {leaveRequests.length === 0 ? (
-                      <div className="text-center py-12 border-2 border-dashed rounded-xl bg-muted/20">
-                        <FileText className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-                        <p className="text-muted-foreground font-medium">No leave requests found</p>
-                      </div>
-                    ) : (
-                      <div className="grid gap-4">
-                        {leaveRequests.map((request) => (
-                          <Card key={request.id} className={cn(
-                            "transition-all duration-200",
-                            request.status === 'pending' ? "border-l-4 border-l-yellow-400" :
-                              request.status === 'approved' ? "border-l-4 border-l-green-400 opacity-80" :
-                                "border-l-4 border-l-red-400 opacity-80"
-                          )}>
-                            <CardContent className="p-5">
-                              <div className="flex flex-col md:flex-row justify-between gap-4">
-                                <div className="space-y-2 flex-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <h3 className="font-bold text-lg">{request.studentName}</h3>
-                                    <Badge variant="secondary" className="bg-primary/5">{request.type}</Badge>
-                                    <Badge className={
-                                      request.status === 'approved' ? "bg-green-100 text-green-700 hover:bg-green-100" :
-                                        request.status === 'rejected' ? "bg-red-100 text-red-700 hover:bg-red-100" :
-                                          "bg-yellow-100 text-yellow-700 hover:bg-yellow-100"
-                                    }>
-                                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                                    </Badge>
-                                  </div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-muted-foreground">
-                                    <div className="flex items-center gap-2 font-medium">
-                                      <Calendar className="h-4 w-4 text-primary" />
-                                      {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <Clock className="h-4 w-4" />
-                                      Submitted: {new Date(request.submittedAt).toLocaleDateString()}
-                                    </div>
-                                  </div>
-                                  <div className="mt-3 p-3 bg-muted/30 rounded-lg text-sm italic">
-                                    <span className="font-bold block not-italic mb-1 opacity-70">Reason:</span>
-                                    "{request.reason}"
-                                  </div>
-                                  {request.comments && (
-                                    <div className="mt-3 p-3 bg-primary/5 rounded-lg text-sm border-l-2 border-primary">
-                                      <span className="font-bold block mb-1">Your Remark:</span>
-                                      {request.comments}
-                                    </div>
-                                  )}
-                                </div>
-                                {request.status === 'pending' && (
-                                  <div className="flex flex-row md:flex-col gap-2 shrink-0">
-                                    <Button
-                                      className="flex-1 md:w-full bg-green-600 hover:bg-green-700"
-                                      onClick={() => {
-                                        setReviewData({ requestId: request.id, comments: '', status: 'approved' });
-                                        setIsReviewDialogOpen(true);
-                                      }}
-                                    >
-                                      <CheckCircle2 className="h-4 w-4 mr-2" />
-                                      Approve
-                                    </Button>
-                                    <Button
-                                      variant="destructive"
-                                      className="flex-1 md:w-full"
-                                      onClick={() => {
-                                        setReviewData({ requestId: request.id, comments: '', status: 'rejected' });
-                                        setIsReviewDialogOpen(true);
-                                      }}
-                                    >
-                                      <XCircle className="h-4 w-4 mr-2" />
-                                      Reject
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+
 
           {/* Track Performance */}
           <TabsContent value="performance" className="space-y-4">

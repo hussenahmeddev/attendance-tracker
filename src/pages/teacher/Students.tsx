@@ -7,7 +7,8 @@ import { GraduationCap, Users, Eye, TrendingUp } from "lucide-react";
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { PLACEHOLDER_RANGES, DEFAULT_VALUES } from "@/config/constants";
+import { fetchAllAttendance, type AttendanceRecord } from "@/lib/attendanceUtils";
+import { DEFAULT_VALUES, ATTENDANCE_WEIGHTS } from "@/config/constants";
 
 interface Student {
   id: string;
@@ -21,17 +22,18 @@ interface Student {
 
 export default function TeacherStudents() {
   const [students, setStudents] = useState<Student[]>([]);
+  const [attendanceStats, setAttendanceStats] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   // Fetch students from Firebase
   useEffect(() => {
     const fetchStudents = async () => {
       try {
-        // Query for users with role 'student'
+        // 1. Fetch Students
         const usersCollection = collection(db, 'users');
         const studentsQuery = query(usersCollection, where('role', '==', 'student'));
         const studentsSnapshot = await getDocs(studentsQuery);
-        
+
         const studentsData = studentsSnapshot.docs.map(doc => {
           const data = doc.data();
           return {
@@ -44,10 +46,39 @@ export default function TeacherStudents() {
             createdAt: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'
           } as Student;
         });
-        
+
         setStudents(studentsData);
+
+        // 2. Fetch Real Attendance Data
+        const allAttendance = await fetchAllAttendance();
+
+        // 3. Calculate Attendance Percentage per Student
+        const stats: Record<string, number> = {};
+
+        studentsData.forEach(student => {
+          // Check both userId (STD001) and doc id for robustness
+          const studentRecords = allAttendance.filter(r => r.studentId === student.userId || r.studentId === student.id);
+          const totalClasses = studentRecords.length;
+
+          if (totalClasses === 0) {
+            stats[student.id] = 0;
+          } else {
+            const present = studentRecords.filter(r => r.status === 'present').length;
+            const late = studentRecords.filter(r => r.status === 'late').length;
+            const excused = studentRecords.filter(r => r.status === 'excused').length;
+
+            stats[student.id] = Math.round((
+              (present * ATTENDANCE_WEIGHTS.PRESENT) +
+              (late * ATTENDANCE_WEIGHTS.LATE) +
+              (excused * ATTENDANCE_WEIGHTS.EXCUSED)
+            ) / totalClasses * 100);
+          }
+        });
+
+        setAttendanceStats(stats);
+
       } catch (error) {
-        console.error('Error fetching students:', error);
+        console.error('Error fetching data:', error);
       } finally {
         setLoading(false);
       }
@@ -56,20 +87,12 @@ export default function TeacherStudents() {
     fetchStudents();
   }, []);
 
-  // Calculate performance metrics (placeholder logic)
-  const getPerformanceLevel = (student: Student) => {
-    // Since we don't have attendance data yet, we'll use a placeholder
-    const hash = student.displayName.length + student.userId.length;
-    if (hash % 4 === 0) return "Excellent";
-    if (hash % 4 === 1) return "Good";
-    if (hash % 4 === 2) return "Average";
+  // Calculate performance level based on REAL attendance
+  const getPerformanceLevel = (percentage: number) => {
+    if (percentage >= 90) return "Excellent";
+    if (percentage >= 75) return "Good";
+    if (percentage >= 50) return "Average";
     return "At Risk";
-  };
-
-  const getAttendancePercentage = (student: Student) => {
-    // Placeholder attendance calculation
-    const hash = student.displayName.length * 7 + student.userId.length * 3;
-    return Math.max(PLACEHOLDER_RANGES.MIN_ATTENDANCE, Math.min(PLACEHOLDER_RANGES.MAX_ATTENDANCE, hash % PLACEHOLDER_RANGES.ATTENDANCE_RANGE + PLACEHOLDER_RANGES.MIN_ATTENDANCE));
   };
   return (
     <DashboardLayout
@@ -79,7 +102,7 @@ export default function TeacherStudents() {
     >
       <div className="space-y-6">
         <UserProfile />
-        
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -113,9 +136,9 @@ export default function TeacherStudents() {
                     </div>
                   ) : (
                     students.map((student) => {
-                      const attendance = getAttendancePercentage(student);
-                      const performance = getPerformanceLevel(student);
-                      
+                      const attendance = attendanceStats[student.id] || 0;
+                      const performance = getPerformanceLevel(attendance);
+
                       return (
                         <div key={student.id} className="flex items-center justify-between p-4 border rounded-lg">
                           <div className="flex items-center gap-3">
@@ -135,13 +158,13 @@ export default function TeacherStudents() {
                             </div>
                             <div className="text-center">
                               <p className="text-sm text-muted-foreground">Performance</p>
-                              <Badge 
-                                variant="outline" 
+                              <Badge
+                                variant="outline"
                                 className={
                                   performance === "Excellent" ? "bg-green-50 text-green-700 border-green-200" :
-                                  performance === "Good" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                  performance === "Average" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                                  "bg-red-50 text-red-700 border-red-200"
+                                    performance === "Good" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                      performance === "Average" ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                                        "bg-red-50 text-red-700 border-red-200"
                                 }
                               >
                                 {performance}
@@ -166,9 +189,9 @@ export default function TeacherStudents() {
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
                       <p className="text-2xl font-bold text-green-600">
-                        {students.length > DEFAULT_VALUES.STUDENT_COUNT 
-                          ? Math.round(students.reduce((acc, student) => acc + getAttendancePercentage(student), DEFAULT_VALUES.ATTENDANCE_RATE) / students.length)
-                          : DEFAULT_VALUES.ATTENDANCE_RATE}%
+                        {students.length > 0
+                          ? Math.round(Object.values(attendanceStats).reduce((a, b) => a + b, 0) / students.length)
+                          : 0}%
                       </p>
                       <p className="text-sm text-muted-foreground">Average Attendance</p>
                     </div>
@@ -178,7 +201,7 @@ export default function TeacherStudents() {
                     </div>
                     <div>
                       <p className="text-2xl font-bold text-yellow-600">
-                        {students.filter(student => getPerformanceLevel(student) === "At Risk").length}
+                        {students.filter(student => getPerformanceLevel(attendanceStats[student.id] || 0) === "At Risk").length}
                       </p>
                       <p className="text-sm text-muted-foreground">At Risk</p>
                     </div>

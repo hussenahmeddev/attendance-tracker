@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { getAttendanceStatistics, fetchAttendanceByDateAndClass } from "@/lib/attendanceUtils";
+
 import { Users, BookOpen, TrendingUp, AlertTriangle } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -15,11 +15,7 @@ export default function AdminDashboard() {
     totalUsers: 0,
     totalStudents: 0,
     totalTeachers: 0,
-    overallAttendance: 0,
     totalClasses: 0,
-    presentCount: 0,
-    absentCount: 0,
-    lateCount: 0
   });
 
   useEffect(() => {
@@ -33,26 +29,16 @@ export default function AdminDashboard() {
         const totalStudents = users.filter(u => u.role === 'student').length;
         const totalTeachers = users.filter(u => u.role === 'teacher').length;
 
-        // Fetch attendance statistics (all time) for overall rate
-        const attendanceStats = await getAttendanceStatistics();
-
-        // Fetch TODAY'S attendance specifically for the "Today" cards
-        const today = new Date().toISOString().split('T')[0];
-        const todaysRecords = await fetchAttendanceByDateAndClass(today);
-
-        const presentToday = todaysRecords.filter(r => r.status === 'present').length;
-        const absentToday = todaysRecords.filter(r => r.status === 'absent').length;
-        const lateToday = todaysRecords.filter(r => r.status === 'late').length;
+        // Fetch classes
+        const classesSnapshot = await getDocs(collection(db, 'classes'));
+        const classes = classesSnapshot.docs.map(doc => doc.data());
+        const activeClasses = classes.filter(c => c.status === 'active').length;
 
         setStats({
           totalUsers,
           totalStudents,
           totalTeachers,
-          overallAttendance: attendanceStats.attendanceRate,
-          totalClasses: attendanceStats.uniqueClasses,
-          presentCount: presentToday,
-          absentCount: absentToday,
-          lateCount: lateToday
+          totalClasses: activeClasses,
         });
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -63,9 +49,6 @@ export default function AdminDashboard() {
 
     fetchDashboardData();
   }, []);
-
-  console.log('AdminDashboard - userData:', userData);
-  console.log('AdminDashboard - loading:', loading);
 
   if (loading || dataLoading) {
     return (
@@ -92,17 +75,6 @@ export default function AdminDashboard() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Overall Attendance</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{stats.overallAttendance}%</div>
-              <p className="text-xs text-muted-foreground">All time average</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Students</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
@@ -125,34 +97,23 @@ export default function AdminDashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Present Today</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Total Teachers</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.presentCount}</div>
-              <p className="text-xs text-muted-foreground">Students present</p>
+              <div className="text-2xl font-bold">{stats.totalTeachers}</div>
+              <p className="text-xs text-muted-foreground">Active teachers</p>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Attendance Breakdown */}
-        <div className="grid gap-4 md:grid-cols-3">
           <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">{stats.presentCount}</div>
-              <p className="text-sm text-muted-foreground">Present</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-red-600">{stats.absentCount}</div>
-              <p className="text-sm text-muted-foreground">Absent</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-yellow-600">{stats.lateCount}</div>
-              <p className="text-sm text-muted-foreground">Late</p>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalUsers}</div>
+              <p className="text-xs text-muted-foreground">All users</p>
             </CardContent>
           </Card>
         </div>

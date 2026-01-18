@@ -10,7 +10,7 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
   const { currentUser, userData, loading } = useAuth();
 
   // Temporary: Allow access for testing purposes
-  const isTestMode = window.location.search.includes('test=true') || !currentUser;
+  const isTestMode = window.location.search.includes('test=true');
 
   if (loading && !isTestMode) {
     return (

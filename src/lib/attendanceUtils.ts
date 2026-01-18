@@ -1,6 +1,19 @@
-import { collection, addDoc, getDocs, query, where, updateDoc, doc, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, updateDoc, doc, deleteDoc, orderBy, limit, DocumentData, Timestamp } from "firebase/firestore";
 import { db } from "./firebase";
 import { saveOfflineAttendance } from "./offlineStorage";
+import { ATTENDANCE_WEIGHTS } from '@/config/constants';
+
+/**
+ * Helper to get local date as YYYY-MM-DD string
+ * Fixes timezone issues where toISOString() uses UTC
+ */
+export const getLocalYMD = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 
@@ -185,8 +198,7 @@ export const createAttendanceSession = async (
       teacherName,
       sessionTime
     });
-
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalYMD();
 
     const sessionData = {
       classId,
@@ -226,7 +238,7 @@ export const markAttendance = async (
   status: AttendanceStatus,
   notes?: string
 ): Promise<string> => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalYMD();
   const timestamp = new Date().toISOString();
 
   const attendanceData = {
@@ -519,7 +531,11 @@ export const calculateStudentAttendanceSummary = async (
     const excusedCount = records.filter(r => r.status === 'excused').length;
 
     const attendancePercentage = totalClasses > 0
-      ? Math.round(((presentCount + lateCount) / totalClasses) * 100)
+      ? Math.round((
+        (presentCount * ATTENDANCE_WEIGHTS.PRESENT) +
+        (lateCount * ATTENDANCE_WEIGHTS.LATE) +
+        (excusedCount * ATTENDANCE_WEIGHTS.EXCUSED)
+      ) / totalClasses * 100)
       : 0;
 
     const lastAttendance = records.length > 0 ? records[0].date : undefined;
@@ -579,7 +595,11 @@ export const getAttendanceStatistics = async (
     const excusedCount = records.filter(r => r.status === 'excused').length;
 
     const attendanceRate = totalRecords > 0
-      ? Math.round(((presentCount + lateCount) / totalRecords) * 100)
+      ? Math.round((
+        (presentCount * ATTENDANCE_WEIGHTS.PRESENT) +
+        (lateCount * ATTENDANCE_WEIGHTS.LATE) +
+        (excusedCount * ATTENDANCE_WEIGHTS.EXCUSED)
+      ) / totalRecords * 100)
       : 0;
 
     const uniqueStudents = new Set(records.map(r => r.studentId)).size;
@@ -660,7 +680,10 @@ export const getAttendanceTrends = async (
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      const dateString = date.toISOString().split('T')[0];
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
 
       const records = await fetchAttendanceByDateAndClass(dateString, classId);
 

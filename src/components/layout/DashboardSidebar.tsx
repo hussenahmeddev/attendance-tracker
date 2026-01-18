@@ -20,6 +20,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Wrench,
+  MessageSquare,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -50,6 +51,7 @@ const teacherNavItems: NavItem[] = [
   { title: "Students", href: "/teacher/students", icon: GraduationCap },
   { title: "Reports", href: "/teacher/reports", icon: FileText },
   { title: "Schedule", href: "/teacher/schedule", icon: Clock },
+  { title: "Leave Requests", href: "/teacher/leaves", icon: MessageSquare },
 ];
 
 const studentNavItems: NavItem[] = [
