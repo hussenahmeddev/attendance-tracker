@@ -1,5 +1,5 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
@@ -34,6 +34,21 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+
+// Function to get or initialize a secondary app (for creating users without logging out)
+// We need to initialize a separate app instance for creating users
+// so we don't overwrite the current user's session
+export const getSecondaryApp = () => {
+  // Check if secondary app already exists to avoid duplicate initialization
+  const secondaryAppName = "secondaryApp";
+  const existingApp = getApps().find(app => app.name === secondaryAppName);
+
+  if (existingApp) {
+    return existingApp;
+  }
+
+  return initializeApp(firebaseConfig, secondaryAppName);
+};
 
 export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
 

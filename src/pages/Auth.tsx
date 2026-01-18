@@ -4,16 +4,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { GraduationCap, Mail, Lock, User, Eye, EyeOff, ArrowLeft, AlertCircle } from "lucide-react";
+import { GraduationCap, Mail, Lock, Eye, EyeOff, ArrowLeft, AlertCircle } from "lucide-react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { signIn, signUp } = useAuth();
-  const defaultMode = searchParams.get("mode") === "signup" ? "signup" : "signin";
-  
+  const { signIn } = useAuth();
+  const defaultMode = "signin";
+
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -22,14 +22,14 @@ export default function Auth() {
     e.preventDefault();
     setIsLoading(true);
     setError("");
-    
+
     const formData = new FormData(e.target as HTMLFormElement);
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
-    
+
     try {
       const userData = await signIn(email, password);
-      
+
       // Redirect based on user role
       switch (userData.role) {
         case "admin":
@@ -51,63 +51,10 @@ export default function Auth() {
     }
   };
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError("");
-    
-    const formData = new FormData(e.target as HTMLFormElement);
-    const name = formData.get("name") as string;
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    
-    // Determine role based on email domain or other logic
-    let role = "student"; // Default role
-    
-    // Auto-assign roles based on email patterns (case-insensitive)
-    const emailLower = email.toLowerCase();
-    if (emailLower.includes("admin") || emailLower.includes("administrator")) {
-      role = "admin";
-    } else if (emailLower.includes("teacher") || emailLower.includes("faculty") || 
-               emailLower.includes("staff") || emailLower.includes("instructor") ||
-               emailLower.includes("prof") || emailLower.includes("educator")) {
-      role = "teacher";
-    }
-    
-    // For this specific case, let's also check the name
-    const nameLower = name.toLowerCase();
-    if (nameLower.includes("teacher") || nameLower.includes("prof") || 
-        nameLower.includes("instructor") || nameLower.includes("faculty")) {
-      role = "teacher";
-    }
-    
-    try {
-      await signUp(email, password, name, role);
-      
-      // Redirect based on assigned role
-      switch (role) {
-        case "admin":
-          navigate("/admin");
-          break;
-        case "teacher":
-          navigate("/teacher");
-          break;
-        case "student":
-          navigate("/student");
-          break;
-        default:
-          navigate("/student"); // Default fallback
-      }
-    } catch (error: any) {
-      setError(error.message || "Failed to create account");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // handleSignUp removed
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Left Panel - Form */}
       <div className="flex flex-1 flex-col justify-center px-4 py-12 sm:px-6 lg:flex-none lg:px-20 xl:px-24">
         <div className="mx-auto w-full max-w-sm lg:w-96">
           <div className="mb-8">
@@ -133,130 +80,64 @@ export default function Auth() {
             </Alert>
           )}
 
-          <Tabs defaultValue={defaultMode} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="signin" className="space-y-6 animate-fade-in">
-              <form onSubmit={handleSignIn} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      placeholder="name@institution.edu"
-                      className="pl-10"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="password"
-                      name="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="••••••••"
-                      className="pl-10 pr-10"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" className="rounded border-input" />
-                    <span className="text-muted-foreground">Remember me</span>
-                  </label>
-                  <a href="#" className="text-primary hover:underline">
-                    Forgot password?
-                  </a>
-                </div>
-                <Button type="submit" variant="hero" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Signing in..." : "Sign In"}
-                </Button>
-              </form>
-            </TabsContent>
-
-            <TabsContent value="signup" className="space-y-6 animate-fade-in">
-              <form onSubmit={handleSignUp} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="name"
-                      name="name"
-                      type="text"
-                      placeholder="Full Name"
-                      className="pl-10"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="signup-email"
-                      name="email"
-                      type="email"
-                      placeholder="name@institution.edu"
-                      className="pl-10"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="signup-password"
-                      name="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="••••••••"
-                      className="pl-10 pr-10"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-                <Button type="submit" variant="hero" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Creating account..." : "Create Account"}
-                </Button>
-              </form>
-
-              <p className="text-center text-sm text-muted-foreground">
-                Your role will be automatically assigned based on your email address.
-                <br />
-                By signing up, you agree to our{" "}
-                <a href="#" className="text-primary hover:underline">Terms of Service</a>
-                {" "}and{" "}
-                <a href="#" className="text-primary hover:underline">Privacy Policy</a>.
+          <div className="space-y-6">
+            <div className="space-y-2 text-center">
+              <h1 className="text-2xl font-semibold tracking-tight">Sign in to your account</h1>
+              <p className="text-sm text-muted-foreground">
+                Enter your email below to login to your dashboard
               </p>
-            </TabsContent>
-          </Tabs>
+            </div>
+
+            <form onSubmit={handleSignIn} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="name@institution.edu"
+                    className="pl-10"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    className="pl-10 pr-10"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" className="rounded border-input" />
+                  <span className="text-muted-foreground">Remember me</span>
+                </label>
+                <a href="#" className="text-primary hover:underline">
+                  Forgot password?
+                </a>
+              </div>
+              <Button type="submit" variant="hero" className="w-full" disabled={isLoading}>
+                {isLoading ? "Signing in..." : "Sign In"}
+              </Button>
+            </form>
+          </div>
         </div>
       </div>
 
@@ -269,7 +150,7 @@ export default function Auth() {
             <GraduationCap className="mx-auto mb-6 h-16 w-16" />
             <h2 className="mb-4 text-3xl font-bold">Welcome to EduTrack</h2>
             <p className="text-lg text-white/80">
-              The complete attendance management solution for modern educational institutions. 
+              The complete attendance management solution for modern educational institutions.
               Track, analyze, and improve student engagement with powerful tools.
             </p>
           </div>

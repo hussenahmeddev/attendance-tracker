@@ -32,10 +32,17 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
       email: `test@${requiredRole}.com`,
       displayName: `Test ${requiredRole?.charAt(0).toUpperCase()}${requiredRole?.slice(1)}`,
       role: requiredRole || 'student',
+      status: 'active' as const,
+      mustChangePassword: false,
     };
-    
+
     // Temporarily inject mock data for testing
     return <>{children}</>;
+  }
+
+  // Check if user is active
+  if (userData?.status !== 'active' && !isTestMode) {
+    return <Navigate to="/auth" replace />;
   }
 
   if (requiredRole && userData?.role !== requiredRole && !isTestMode) {

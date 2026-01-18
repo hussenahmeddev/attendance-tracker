@@ -16,6 +16,8 @@ interface DashboardLayoutProps {
   pageDescription?: string;
 }
 
+import { ChangePasswordDialog } from "@/components/auth/ChangePasswordDialog";
+
 export function DashboardLayout({
   children,
   role,
@@ -26,7 +28,6 @@ export function DashboardLayout({
 }: DashboardLayoutProps) {
   const { userData } = useAuth();
 
-  // Role-based styling
   // Role-based styling
   const roleStyles = {
     admin: {
@@ -49,10 +50,9 @@ export function DashboardLayout({
   const displayName = userName || userData?.displayName || "User";
   const email = userEmail || userData?.email || "";
 
-
-
   return (
     <div className="min-h-screen flex bg-slate-50">
+      <ChangePasswordDialog />
       <DashboardSidebar
         role={role}
         userName={displayName}

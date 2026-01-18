@@ -5,10 +5,11 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updateProfile
+  updateProfile,
+  getAuth
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, runTransaction, collection } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { auth, db, getSecondaryApp } from '@/lib/firebase';
 
 interface UserData {
   uid: string;
@@ -16,7 +17,8 @@ interface UserData {
   email: string;
   displayName: string;
   role: 'admin' | 'teacher' | 'student';
-  status?: string;
+  status: 'active' | 'deactivate';
+  mustChangePassword?: boolean;
   createdAt?: string;
 }
 
@@ -24,7 +26,7 @@ interface AuthContextType {
   currentUser: User | null;
   userData: UserData | null;
   loading: boolean;
-  signUp: (email: string, password: string, name: string, role: string) => Promise<void>;
+  createUser: (email: string, password: string, name: string, role: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<UserData>;
   logout: () => Promise<void>;
 }
@@ -88,8 +90,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Check if we're in test mode
   const isTestMode = window.location.search.includes('test=true');
 
-  const signUp = async (email: string, password: string, name: string, role: string) => {
-    const { user } = await createUserWithEmailAndPassword(auth, email, password);
+  // Use the secondary app for creating users to avoid logging out the admin
+  const createUser = async (email: string, password: string, name: string, role: string) => {
+    const secondaryApp = getSecondaryApp();
+    const secondaryAuth = getAuth(secondaryApp);
+
+    // Create user in authentication
+    const { user } = await createUserWithEmailAndPassword(secondaryAuth, email, password);
 
     // Update the user's display name
     await updateProfile(user, { displayName: name });
@@ -98,17 +105,21 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const userId = await generateUserId(role);
 
     // Store additional user data in Firestore
-    const userDocData = {
+    const userDocData: UserData = {
       uid: user.uid,
       userId: userId, // Auto-increment ID like ADM001, TCH001, STD001
       email: user.email!,
       displayName: name,
       role: role as 'admin' | 'teacher' | 'student',
+      status: 'active', // Default status is active
+      mustChangePassword: true, // Force password change for new users
       createdAt: new Date().toISOString(),
     };
 
     await setDoc(doc(db, 'users', user.uid), userDocData);
-    setUserData(userDocData);
+
+    // Sign out from the secondary app so it doesn't interfere
+    await signOut(secondaryAuth);
   };
 
   const signIn = async (email: string, password: string): Promise<UserData> => {
@@ -117,10 +128,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Get user data from Firestore
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     if (userDoc.exists()) {
-      const userData = userDoc.data() as UserData;
-      setUserData(userData);
-      return userData;
+      const data = userDoc.data() as UserData;
+
+      // Check status
+      if (data.status === 'deactivate') {
+        await signOut(auth);
+        throw new Error('Your account has been deactivated. Please contact support.');
+      }
+
+      setUserData(data);
+      return data;
     } else {
+      // If user exists in Auth but not in Firestore, create basic data or error
+      // For now error as we expect admin to create users
       throw new Error('User data not found');
     }
   };
@@ -146,6 +166,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         email: `test@${mockRole}.com`,
         displayName: `Test ${mockRole.charAt(0).toUpperCase()}${mockRole.slice(1)}`,
         role: mockRole,
+        status: 'active',
+        mustChangePassword: false,
       };
 
       setCurrentUser({ uid: 'test-user' } as User);
@@ -162,7 +184,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           try {
             const userDoc = await getDoc(doc(db, 'users', user.uid));
             if (userDoc.exists()) {
-              setUserData(userDoc.data() as UserData);
+              const data = userDoc.data() as UserData;
+              // Check status on persistent login too
+              if (data.status === 'deactivate') {
+                await signOut(auth);
+                setUserData(null);
+                setCurrentUser(null);
+                return;
+              }
+              setUserData(data);
             } else {
               console.error('User document not found in Firestore');
               setUserData(null);
@@ -197,7 +227,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     currentUser,
     userData,
     loading,
-    signUp,
+    createUser,
     signIn,
     logout,
   };

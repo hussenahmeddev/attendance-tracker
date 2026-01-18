@@ -24,8 +24,9 @@ import {
   Download
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { collection, getDocs, doc, updateDoc, deleteDoc, addDoc } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface User {
   id: string;
@@ -38,6 +39,7 @@ interface User {
 }
 
 export default function AdminUsers() {
+  const { createUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -54,7 +56,8 @@ export default function AdminUsers() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    role: ''
+    role: '',
+    password: ''
   });
 
   const [editFormData, setEditFormData] = useState({
@@ -159,42 +162,43 @@ export default function AdminUsers() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.name || !formData.email || !formData.role) {
+    if (!formData.name || !formData.email || !formData.role || !formData.password) {
       alert('Please fill in all fields');
       return;
     }
 
     setCreating(true);
     try {
-      // Create user document in Firestore
-      const newUser = {
-        displayName: formData.name,
-        email: formData.email,
-        role: formData.role,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        // Generate a temporary userId - in a real app this would come from Firebase Auth
-        userId: `${formData.role.toUpperCase().slice(0, 3)}${String(Date.now()).slice(-3)}`
-      };
+      await createUser(formData.email, formData.password, formData.name, formData.role);
 
-      // Add to Firestore
-      const docRef = await addDoc(collection(db, 'users'), newUser);
+      // Refresh users list
+      // Ideally we should just add the new user to the local state, but since createUser
+      // does async work and ID generation, re-fetching or waiting might be safer.
+      // For now let's just re-fetch or do a reload, or we can manually construct the user object.
+      // Let's re-fetch to be safe and get the correct auto-ID.
+      const usersCollection = collection(db, 'users');
+      const usersSnapshot = await getDocs(usersCollection);
+      const usersData = usersSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          userId: data.userId || 'N/A',
+          displayName: data.displayName || 'Unknown',
+          email: data.email || 'No email',
+          role: data.role || 'student',
+          status: data.status || 'active',
+          createdAt: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'
+        } as User;
+      });
+      setUsers(usersData);
 
-      // Add to local state with the new document ID
-      const localUser = {
-        id: docRef.id,
-        ...newUser,
-        createdAt: new Date().toLocaleDateString()
-      };
-
-      setUsers(prev => [localUser, ...prev]);
-      setFormData({ name: '', email: '', role: '' });
+      setFormData({ name: '', email: '', role: '', password: '' });
       setIsAddUserOpen(false);
       alert('User created successfully!');
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating user:', error);
-      alert('Failed to create user. Please try again.');
+      alert('Failed to create user: ' + error.message);
     } finally {
       setCreating(false);
     }
@@ -299,6 +303,17 @@ export default function AdminUsers() {
                             placeholder="Enter email address"
                             value={formData.email}
                             onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="password">Temporary Password</Label>
+                          <Input
+                            id="password"
+                            type="password"
+                            placeholder="Enter temporary password"
+                            value={formData.password}
+                            onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                             required
                           />
                         </div>
