@@ -10,6 +10,7 @@ import { db } from "@/lib/firebase";
 import { getEnrolledClassesForStudent, type Class } from "@/lib/classUtils";
 import { calculateStudentAttendanceSummary } from "@/lib/attendanceUtils";
 import { DEFAULT_VALUES } from "@/config/constants";
+import { subscribeToCalendarEvents, type CalendarEvent } from "@/lib/eventUtils";
 import {
   BookOpen,
   Calendar,
@@ -42,6 +43,8 @@ export default function StudentDashboard() {
     totalClasses: 0,
     pendingRequests: 0
   });
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
 
   // Fetch student data and statistics
   useEffect(() => {
@@ -101,7 +104,13 @@ export default function StudentDashboard() {
       }
     };
 
+    const unsubscribeEvents = subscribeToCalendarEvents((data) => {
+      setEvents(data.filter(e => new Date(e.date).getTime() >= new Date().setHours(0, 0, 0, 0)));
+      setEventsLoading(false);
+    });
+
     fetchData();
+    return () => unsubscribeEvents();
   }, [userData]);
 
   if (loading || dataLoading) {
@@ -210,7 +219,7 @@ export default function StudentDashboard() {
           </CardContent>
         </Card>
 
-        {/* Today's Overview */}
+        {/* Today's Overview & Events */}
         <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader>
@@ -245,6 +254,54 @@ export default function StudentDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-primary" />
+                Upcoming Events & Holidays
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {eventsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                </div>
+              ) : events.length === 0 ? (
+                <div className="text-center py-8">
+                  <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-muted-foreground">No upcoming events</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {events.slice(0, 3).map(event => (
+                    <div key={event.id} className="p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="font-semibold">{event.title}</div>
+                        <Badge variant="outline" className="text-[10px] uppercase">{event.type}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-2">{event.description}</p>
+                      <div className="flex items-center gap-3 text-[10px] font-medium text-primary">
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {new Date(event.date).toLocaleDateString()}
+                        </div>
+                        {event.time && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {event.time}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Performance & Summary */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
                 Attendance Summary
               </CardTitle>
@@ -259,36 +316,34 @@ export default function StudentDashboard() {
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Recent Activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 border rounded-lg">
+                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Account Created</p>
+                    <p className="text-sm text-muted-foreground">
+                      Your student account was successfully created on {userData?.createdAt ? new Date(userData.createdAt).toLocaleDateString() : 'today'}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-center py-4 text-sm text-muted-foreground">
+                  More activities will appear as you use the system
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-
-        {/* Recent Activity */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Recent Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 border rounded-lg">
-                <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                </div>
-                <div>
-                  <p className="font-medium">Account Created</p>
-                  <p className="text-sm text-muted-foreground">
-                    Your student account was successfully created on {userData?.createdAt ? new Date(userData.createdAt).toLocaleDateString() : 'today'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="text-center py-4 text-sm text-muted-foreground">
-                More activities will appear as you use the system
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </DashboardLayout>
   );

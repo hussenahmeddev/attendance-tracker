@@ -8,7 +8,9 @@ export const InstallPrompt = () => {
     const [isVisible, setIsVisible] = useState(false);
 
     useEffect(() => {
+        console.log('InstallPrompt: Component mounted, registering listener');
         const handler = (e: any) => {
+            console.log('InstallPrompt: beforeinstallprompt event fired!', e);
             // Prevent Chrome 67 and earlier from automatically showing the prompt
             e.preventDefault();
             // Stash the event so it can be triggered later.
@@ -18,7 +20,14 @@ export const InstallPrompt = () => {
 
         window.addEventListener('beforeinstallprompt', handler);
 
+        // Check if already installed
+        window.addEventListener('appinstalled', (evt) => {
+            console.log('InstallPrompt: appinstalled event fired', evt);
+            setIsVisible(false);
+        });
+
         return () => {
+            console.log('InstallPrompt: Component unmounting');
             window.removeEventListener('beforeinstallprompt', handler);
         };
     }, []);

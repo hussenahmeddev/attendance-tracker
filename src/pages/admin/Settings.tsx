@@ -1,5 +1,6 @@
 import { ATTENDANCE_THRESHOLDS } from "@/config/constants";
 import { useState } from "react";
+import { toast } from "sonner";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { UserProfile } from "@/components/UserProfile";
 import { Button } from "@/components/ui/button";
@@ -41,9 +42,15 @@ const generalSettings: SystemSetting[] = [
     id: 'timezone',
     name: 'Timezone',
     description: 'System timezone for attendance tracking',
-    value: 'UTC+05:30',
+    value: 'GMT+03:00 East African Time',
     type: 'select',
-    options: ['UTC+05:30', 'UTC+00:00', 'UTC-05:00', 'UTC+08:00']
+    options: [
+      'GMT+03:00 East African Time',
+      'UTC+05:30',
+      'UTC+00:00',
+      'UTC-05:00',
+      'UTC+08:00'
+    ]
   },
   {
     id: 'language',
@@ -133,6 +140,22 @@ export default function AdminSettings() {
     }));
   };
 
+  const handleSave = () => {
+    toast.success("Settings saved successfully!", {
+      description: "System configuration has been updated.",
+    });
+    console.log("Saving settings:", settings);
+  };
+
+  const handleReset = () => {
+    setSettings({
+      general: generalSettings,
+      attendance: attendanceSettings,
+      notifications: notificationSettings
+    });
+    toast.info("Settings reset to defaults.");
+  };
+
   const renderSettingInput = (setting: SystemSetting, category: string) => {
     switch (setting.type) {
       case 'boolean':
@@ -183,7 +206,7 @@ export default function AdminSettings() {
     >
       <div className="space-y-6">
         <UserProfile />
-        
+
         {/* Header */}
         <div>
           <h2 className="text-2xl font-bold">System Settings</h2>
@@ -449,8 +472,8 @@ export default function AdminSettings() {
 
         {/* Save Settings */}
         <div className="flex justify-end space-x-4">
-          <Button variant="outline">Reset to Defaults</Button>
-          <Button>Save All Settings</Button>
+          <Button variant="outline" onClick={handleReset}>Reset to Defaults</Button>
+          <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/90">Save All Settings</Button>
         </div>
       </div>
     </DashboardLayout>

@@ -15,8 +15,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    /* Primary - Deep Indigo */
-    --primary: 226 70% 35%;
+    /* Primary - Vibrant Blue */
+    --primary: 217 91% 50%;
     --primary-foreground: 210 40% 98%;
 
     /* Secondary - Soft blue-gray */
@@ -51,20 +51,20 @@
 
     --radius: 0.75rem;
 
-    /* Sidebar */
+    /* Sidebar - Deep Blue */
     --sidebar-background: 222 47% 11%;
     --sidebar-foreground: 210 40% 96%;
-    --sidebar-primary: 226 70% 55%;
+    --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 222 47% 18%;
     --sidebar-accent-foreground: 210 40% 96%;
     --sidebar-border: 222 47% 20%;
-    --sidebar-ring: 226 70% 55%;
+    --sidebar-ring: 217 91% 60%;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(226, 70%, 35%) 0%, hsl(226, 70%, 45%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(217, 91%, 50%) 0%, hsl(217, 91%, 60%) 100%);
     --gradient-accent: linear-gradient(135deg, hsl(173, 58%, 39%) 0%, hsl(173, 58%, 50%) 100%);
-    --gradient-hero: linear-gradient(135deg, hsl(226, 70%, 35%) 0%, hsl(173, 58%, 39%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(217, 91%, 40%) 0%, hsl(173, 58%, 39%) 100%);
     --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(214, 32%, 98%) 100%);
 
     /* Shadows */
@@ -139,7 +139,12 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-semibold tracking-tight;
   }
 }
@@ -194,6 +199,7 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -204,6 +210,7 @@
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -215,6 +222,7 @@
     opacity: 0;
     transform: translateX(-20px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -226,6 +234,7 @@
     opacity: 0;
     transform: scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -233,9 +242,12 @@
 }
 
 @keyframes pulseSoft {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.7;
   }

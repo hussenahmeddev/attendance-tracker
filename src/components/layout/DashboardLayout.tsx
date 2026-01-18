@@ -30,16 +30,16 @@ export function DashboardLayout({
   // Role-based styling
   const roleStyles = {
     admin: {
-      sidebar: "bg-red-950 border-red-900", // Dark Red Sidebar
-      indicator: "bg-red-600"
+      sidebar: "bg-blue-950 border-blue-900", // Unified Blue Sidebar
+      indicator: "bg-blue-600"
     },
     teacher: {
-      sidebar: "bg-blue-950 border-blue-900", // Dark Blue Sidebar
+      sidebar: "bg-blue-950 border-blue-900", // Unified Blue Sidebar
       indicator: "bg-blue-600"
     },
     student: {
-      sidebar: "bg-emerald-950 border-emerald-900", // Dark Green Sidebar
-      indicator: "bg-emerald-600"
+      sidebar: "bg-blue-950 border-blue-900", // Unified Blue Sidebar
+      indicator: "bg-blue-600"
     }
   };
 

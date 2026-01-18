@@ -24,6 +24,12 @@ export default function TeacherSchedule() {
     room: ''
   });
   const [saving, setSaving] = useState(false);
+  const [isAddScheduleDialogOpen, setIsAddScheduleDialogOpen] = useState(false);
+  const [addScheduleData, setAddScheduleData] = useState({
+    classId: '',
+    schedule: '',
+    room: ''
+  });
 
   // Fetch teacher's classes
   useEffect(() => {
@@ -82,6 +88,38 @@ export default function TeacherSchedule() {
     }
   };
 
+  const handleAddSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addScheduleData.classId) {
+      toast.error("Please select a class");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await updateClass(addScheduleData.classId, {
+        schedule: addScheduleData.schedule,
+        room: addScheduleData.room
+      });
+
+      // Update local state
+      setClasses(prev => prev.map(c =>
+        c.id === addScheduleData.classId
+          ? { ...c, schedule: addScheduleData.schedule, room: addScheduleData.room }
+          : c
+      ));
+
+      toast.success("Schedule added successfully");
+      setIsAddScheduleDialogOpen(false);
+      setAddScheduleData({ classId: '', schedule: '', room: '' });
+    } catch (error) {
+      console.error('Error adding schedule:', error);
+      toast.error("Failed to add schedule");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <DashboardLayout
       role="teacher"
@@ -98,10 +136,10 @@ export default function TeacherSchedule() {
                 <Calendar className="h-5 w-5" />
                 My Class Schedule
               </CardTitle>
-              {/* <Button variant="outline">
+              <Button variant="outline" onClick={() => setIsAddScheduleDialogOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Schedule
-              </Button> */}
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -267,6 +305,70 @@ export default function TeacherSchedule() {
               </Button>
               <Button type="submit" disabled={saving}>
                 {saving ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isAddScheduleDialogOpen} onOpenChange={setIsAddScheduleDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Class Schedule</DialogTitle>
+            <DialogDescription>
+              Assign a schedule and room to one of your classes
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddSchedule}>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="class-select">Select Class</Label>
+                <select
+                  id="class-select"
+                  className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
+                  value={addScheduleData.classId}
+                  onChange={(e) => {
+                    const cls = classes.find(c => c.id === e.target.value);
+                    setAddScheduleData({
+                      classId: e.target.value,
+                      schedule: cls?.schedule || '',
+                      room: cls?.room || ''
+                    });
+                  }}
+                  required
+                >
+                  <option value="">Choose a class...</option>
+                  {classes.map(cls => (
+                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-schedule">Schedule</Label>
+                <Input
+                  id="add-schedule"
+                  value={addScheduleData.schedule}
+                  onChange={(e) => setAddScheduleData(prev => ({ ...prev, schedule: e.target.value }))}
+                  placeholder="e.g. Mon/Wed 10:00 AM"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-room">Room</Label>
+                <Input
+                  id="add-room"
+                  value={addScheduleData.room}
+                  onChange={(e) => setAddScheduleData(prev => ({ ...prev, room: e.target.value }))}
+                  placeholder="e.g. Room 101"
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsAddScheduleDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Adding..." : "Add Schedule"}
               </Button>
             </DialogFooter>
           </form>

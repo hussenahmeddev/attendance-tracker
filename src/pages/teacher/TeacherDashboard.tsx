@@ -23,9 +23,17 @@ import {
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { fetchTeacherClasses, type Class } from "@/lib/classUtils";
+import { fetchTeacherClasses, type Class, updateClass, getStudentsForClass } from "@/lib/classUtils";
 import { getAttendanceStatistics, fetchTeacherAttendance } from "@/lib/attendanceUtils";
+import { fetchAllLeaveRequests, updateLeaveRequestStatus, type LeaveRequest, subscribeToAllLeaveRequests } from "@/lib/leaveUtils";
 import { DEFAULT_VALUES } from "@/config/constants";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { FileText, MessageSquare } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Student {
   id: string;
@@ -43,11 +51,27 @@ export default function TeacherDashboard() {
   const [studentsLoading, setStudentsLoading] = useState(true);
   const [classes, setClasses] = useState<Class[]>([]);
   const [attendanceStats, setAttendanceStats] = useState({
-    attendanceRate: DEFAULT_VALUES.ATTENDANCE_RATE,
-    totalClasses: DEFAULT_VALUES.TOTAL_CLASSES,
-    classesToday: DEFAULT_VALUES.CLASSES_TODAY,
-    totalStudents: DEFAULT_VALUES.TOTAL_STUDENTS
+    attendanceRate: DEFAULT_VALUES.ATTENDANCE_RATE as number,
+    totalClasses: DEFAULT_VALUES.TOTAL_CLASSES as number,
+    classesToday: DEFAULT_VALUES.CLASSES_TODAY as number,
+    totalStudents: DEFAULT_VALUES.TOTAL_STUDENTS as number
   });
+  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
+  const [scheduleData, setScheduleData] = useState({
+    classId: '',
+    schedule: '',
+    room: ''
+  });
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [leaveLoading, setLeaveLoading] = useState(true);
+  const [reviewData, setReviewData] = useState({
+    requestId: '',
+    comments: '',
+    status: '' as 'approved' | 'rejected'
+  });
+  const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   // Fetch teacher's classes and students
   useEffect(() => {
@@ -93,7 +117,15 @@ export default function TeacherDashboard() {
       }
     };
 
+    const unsubscribeLeave = subscribeToAllLeaveRequests((allRequests) => {
+      setLeaveRequests(allRequests);
+      setLeaveLoading(false);
+    });
+
     fetchData();
+    return () => {
+      unsubscribeLeave();
+    };
   }, [userData]);
 
 
@@ -145,6 +177,75 @@ export default function TeacherDashboard() {
     );
   };
 
+  const handleSaveSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scheduleData.classId) {
+      toast.error("Please select a class");
+      return;
+    }
+
+    try {
+      setSavingSchedule(true);
+      await updateClass(scheduleData.classId, {
+        schedule: scheduleData.schedule,
+        room: scheduleData.room
+      });
+
+      // Update local state
+      setClasses(prev => prev.map(c =>
+        c.id === scheduleData.classId
+          ? { ...c, schedule: scheduleData.schedule, room: scheduleData.room }
+          : c
+      ));
+
+      toast.success("Schedule updated successfully");
+      setIsScheduleDialogOpen(false);
+      setScheduleData({ classId: '', schedule: '', room: '' });
+    } catch (error) {
+      console.error('Error updating schedule:', error);
+      toast.error("Failed to update schedule");
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const handleReviewLeave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userData?.displayName) return;
+
+    try {
+      setSubmittingReview(true);
+      await updateLeaveRequestStatus(
+        reviewData.requestId,
+        reviewData.status,
+        userData.displayName,
+        reviewData.comments
+      );
+
+      // Update local state
+      setLeaveRequests(prev => prev.map(r =>
+        r.id === reviewData.requestId
+          ? {
+            ...r,
+            status: reviewData.status,
+            comments: reviewData.comments,
+            reviewedBy: userData.displayName,
+            reviewedAt: new Date().toISOString()
+          }
+          : r
+      ));
+
+      toast.success(`Leave request ${reviewData.status} successfully`);
+      setIsReviewDialogOpen(false);
+      setReviewData({ requestId: '', comments: '', status: 'approved' });
+    } catch (error) {
+      console.error("Failed to update leave request:", error);
+      toast.error("Failed to update leave request");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   return (
     <DashboardLayout
       role="teacher"
@@ -157,11 +258,12 @@ export default function TeacherDashboard() {
 
         {/* Main Functionality Tabs */}
         <Tabs defaultValue="classes" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="classes">My Classes</TabsTrigger>
             <TabsTrigger value="attendance">Take Attendance</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
             <TabsTrigger value="schedule">Schedule</TabsTrigger>
+            <TabsTrigger value="leave">Leave Requests</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
           </TabsList>
 
@@ -403,10 +505,19 @@ export default function TeacherDashboard() {
           <TabsContent value="schedule" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Class Schedule
-                </CardTitle>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Class Schedule
+                  </CardTitle>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsScheduleDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Schedule
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -438,10 +549,108 @@ export default function TeacherDashboard() {
                     </div>
                   )}
                 </div>
-                <Button className="mt-4" variant="outline">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Schedule
-                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Leave Requests Tab */}
+          <TabsContent value="leave" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Leave Requests from Students
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {leaveLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {leaveRequests.length === 0 ? (
+                      <div className="text-center py-12 border-2 border-dashed rounded-xl bg-muted/20">
+                        <FileText className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
+                        <p className="text-muted-foreground font-medium">No leave requests found</p>
+                      </div>
+                    ) : (
+                      <div className="grid gap-4">
+                        {leaveRequests.map((request) => (
+                          <Card key={request.id} className={cn(
+                            "transition-all duration-200",
+                            request.status === 'pending' ? "border-l-4 border-l-yellow-400" :
+                              request.status === 'approved' ? "border-l-4 border-l-green-400 opacity-80" :
+                                "border-l-4 border-l-red-400 opacity-80"
+                          )}>
+                            <CardContent className="p-5">
+                              <div className="flex flex-col md:flex-row justify-between gap-4">
+                                <div className="space-y-2 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="font-bold text-lg">{request.studentName}</h3>
+                                    <Badge variant="secondary" className="bg-primary/5">{request.type}</Badge>
+                                    <Badge className={
+                                      request.status === 'approved' ? "bg-green-100 text-green-700 hover:bg-green-100" :
+                                        request.status === 'rejected' ? "bg-red-100 text-red-700 hover:bg-red-100" :
+                                          "bg-yellow-100 text-yellow-700 hover:bg-yellow-100"
+                                    }>
+                                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                                    </Badge>
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-muted-foreground">
+                                    <div className="flex items-center gap-2 font-medium">
+                                      <Calendar className="h-4 w-4 text-primary" />
+                                      {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Clock className="h-4 w-4" />
+                                      Submitted: {new Date(request.submittedAt).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 p-3 bg-muted/30 rounded-lg text-sm italic">
+                                    <span className="font-bold block not-italic mb-1 opacity-70">Reason:</span>
+                                    "{request.reason}"
+                                  </div>
+                                  {request.comments && (
+                                    <div className="mt-3 p-3 bg-primary/5 rounded-lg text-sm border-l-2 border-primary">
+                                      <span className="font-bold block mb-1">Your Remark:</span>
+                                      {request.comments}
+                                    </div>
+                                  )}
+                                </div>
+                                {request.status === 'pending' && (
+                                  <div className="flex flex-row md:flex-col gap-2 shrink-0">
+                                    <Button
+                                      className="flex-1 md:w-full bg-green-600 hover:bg-green-700"
+                                      onClick={() => {
+                                        setReviewData({ requestId: request.id, comments: '', status: 'approved' });
+                                        setIsReviewDialogOpen(true);
+                                      }}
+                                    >
+                                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      variant="destructive"
+                                      className="flex-1 md:w-full"
+                                      onClick={() => {
+                                        setReviewData({ requestId: request.id, comments: '', status: 'rejected' });
+                                        setIsReviewDialogOpen(true);
+                                      }}
+                                    >
+                                      <XCircle className="h-4 w-4 mr-2" />
+                                      Reject
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -532,6 +741,109 @@ export default function TeacherDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add/Update Class Schedule</DialogTitle>
+            <DialogDescription>
+              Set the schedule and room for your assigned classes
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveSchedule}>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="classSelect">Select Class</Label>
+                <select
+                  id="classSelect"
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                  value={scheduleData.classId}
+                  onChange={(e) => {
+                    const cls = classes.find(c => c.id === e.target.value);
+                    setScheduleData(prev => ({
+                      ...prev,
+                      classId: e.target.value,
+                      schedule: cls?.schedule || '',
+                      room: cls?.room || ''
+                    }));
+                  }}
+                  required
+                >
+                  <option value="">Select a class...</option>
+                  {classes.map((cls) => (
+                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="scheduleInput">Schedule</Label>
+                <Input
+                  id="scheduleInput"
+                  value={scheduleData.schedule}
+                  onChange={(e) => setScheduleData(prev => ({ ...prev, schedule: e.target.value }))}
+                  placeholder="e.g. Mon/Wed 10:00 AM - 12:00 PM"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="roomInput">Room</Label>
+                <Input
+                  id="roomInput"
+                  value={scheduleData.room}
+                  onChange={(e) => setScheduleData(prev => ({ ...prev, room: e.target.value }))}
+                  placeholder="e.g. Room 204 or Lab A"
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsScheduleDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingSchedule}>
+                {savingSchedule ? "Saving..." : "Save Schedule"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Leave Review Dialog */}
+      <Dialog open={isReviewDialogOpen} onOpenChange={setIsReviewDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{reviewData.status === 'approved' ? 'Approve' : 'Reject'} Leave Request</DialogTitle>
+            <DialogDescription>
+              Add a comment or feedback for the student regarding this request.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleReviewLeave}>
+            <div className="py-4">
+              <Label htmlFor="reviewComments" className="block mb-2">Review Comments</Label>
+              <Textarea
+                id="reviewComments"
+                placeholder="e.g. Please bring medical certificate upon return."
+                className="min-h-[100px]"
+                value={reviewData.comments}
+                onChange={(e) => setReviewData(prev => ({ ...prev, comments: e.target.value }))}
+                required={reviewData.status === 'rejected'}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsReviewDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className={reviewData.status === 'approved' ? "bg-green-600 hover:bg-green-700" : ""}
+                disabled={submittingReview}
+              >
+                {submittingReview ? "Processing..." : `Confirm ${reviewData.status === 'approved' ? 'Approval' : 'Rejection'}`}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

@@ -8,10 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  FileText, 
-  Plus, 
-  Calendar, 
+import {
+  FileText,
+  Plus,
+  Calendar,
   Clock,
   CheckCircle2,
   XCircle,
@@ -20,23 +20,13 @@ import {
 import { STATUS_COLORS } from "@/config/constants";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-
-interface LeaveRequest {
-  id: string;
-  type: string;
-  startDate: string;
-  endDate: string;
-  reason: string;
-  status: 'pending' | 'approved' | 'rejected';
-  submittedAt: string;
-  reviewedBy?: string;
-  reviewedAt?: string;
-  comments?: string;
-}
+import { submitLeaveRequest, subscribeToStudentLeaveRequests, type LeaveRequest } from "@/lib/leaveUtils";
+import { toast } from "sonner";
 
 export default function StudentLeaveRequest() {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [formData, setFormData] = useState({
@@ -47,27 +37,49 @@ export default function StudentLeaveRequest() {
   });
 
   useEffect(() => {
-    // Simulate loading
-    const timer = setTimeout(() => setLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    if (!userData?.userId) {
+      setLoading(false);
+      return;
+    }
 
-  const handleSubmit = (e: React.FormEvent) => {
+    setLoading(true);
+    const unsubscribe = subscribeToStudentLeaveRequests(userData.userId, (data) => {
+      setRequests(data);
+      setLoading(false);
+    });
+
+    return () => unsubscribe && typeof unsubscribe === 'function' ? unsubscribe() : undefined;
+  }, [userData]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const newRequest: LeaveRequest = {
-      id: Date.now().toString(),
-      type: formData.type,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      reason: formData.reason,
-      status: 'pending',
-      submittedAt: new Date().toISOString()
-    };
+    if (!userData?.userId) return;
 
-    setRequests(prev => [newRequest, ...prev]);
-    setFormData({ type: '', startDate: '', endDate: '', reason: '' });
-    setIsDialogOpen(false);
+    if (!formData.type) {
+      toast.error("Please select a leave type");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await submitLeaveRequest({
+        studentId: userData.userId,
+        studentName: userData.displayName || 'Anonymous Student',
+        type: formData.type,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        reason: formData.reason
+      });
+
+      toast.success("Leave request submitted successfully");
+      setFormData({ type: '', startDate: '', endDate: '', reason: '' });
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error("Failed to submit leave request:", error);
+      toast.error("Failed to submit leave request");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -201,7 +213,9 @@ export default function StudentLeaveRequest() {
                       />
                     </div>
                     <div className="flex gap-2">
-                      <Button type="submit" className="flex-1">Submit Request</Button>
+                      <Button type="submit" className="flex-1" disabled={submitting}>
+                        {submitting ? "Submitting..." : "Submit Request"}
+                      </Button>
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                         Cancel
                       </Button>
@@ -250,7 +264,7 @@ export default function StudentLeaveRequest() {
                                 Submitted: {new Date(request.submittedAt).toLocaleDateString()}
                               </div>
                               {request.reviewedAt && (
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 text-primary font-medium">
                                   <CheckCircle2 className="h-4 w-4" />
                                   Reviewed: {new Date(request.reviewedAt).toLocaleDateString()} by {request.reviewedBy}
                                 </div>
@@ -258,8 +272,9 @@ export default function StudentLeaveRequest() {
                             </div>
                             <p className="text-sm mt-2">{request.reason}</p>
                             {request.comments && (
-                              <div className="mt-2 p-2 bg-muted/30 rounded text-sm">
-                                <strong>Comments:</strong> {request.comments}
+                              <div className="mt-2 p-3 bg-muted/40 rounded-lg text-sm border-l-4 border-primary">
+                                <div className="font-bold mb-1 text-primary">Teacher's Note:</div>
+                                {request.comments}
                               </div>
                             )}
                           </div>
