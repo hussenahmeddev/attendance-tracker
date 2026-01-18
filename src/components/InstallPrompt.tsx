@@ -45,14 +45,36 @@ export const InstallPrompt = () => {
     if (!isVisible) return null;
 
     return (
-        <div className="fixed bottom-4 right-4 z-50 animate-bounce">
-            <Button
-                onClick={handleInstallClick}
-                className="bg-primary hover:bg-primary/90 text-white shadow-lg flex items-center gap-2"
-            >
-                <Download className="w-4 h-4" />
-                Install App
-            </Button>
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:w-80 z-[100] animate-slide-up">
+            <div className="bg-card/95 backdrop-blur-md border border-primary/20 p-4 rounded-xl shadow-2xl flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-inner border border-border">
+                        <img src="/pwa-icon-192.png" alt="App Icon" className="w-full h-full object-cover" />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-sm leading-tight">Install Attendance Pro</h3>
+                        <p className="text-xs text-muted-foreground">Add to home screen for offline access and native experience.</p>
+                    </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsVisible(false)}
+                        className="text-xs px-4"
+                    >
+                        Later
+                    </Button>
+                    <Button
+                        size="sm"
+                        onClick={handleInstallClick}
+                        className="bg-primary hover:bg-primary/90 text-white shadow-md flex items-center gap-2 text-xs px-4"
+                    >
+                        <Download className="w-3 h-3" />
+                        Install
+                    </Button>
+                </div>
+            </div>
         </div>
     );
 };
