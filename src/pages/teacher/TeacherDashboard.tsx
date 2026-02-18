@@ -3,166 +3,107 @@ import { UserProfile } from "@/components/UserProfile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   BookOpen,
   Users,
   ClipboardCheck,
   Calendar,
-  TrendingUp,
   Clock,
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Plus,
-  Eye,
-  Edit,
-  BarChart3,
-  ChevronRight
+  ChevronRight,
+  FileText,
+  MessageSquare,
+  Settings,
+  TrendingUp,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { fetchTeacherClasses, type Class, updateClass, getStudentsForClass } from "@/lib/classUtils";
-import { getAttendanceStatistics, fetchTeacherAttendance } from "@/lib/attendanceUtils";
-import { fetchAllLeaveRequests, updateLeaveRequestStatus, type LeaveRequest, subscribeToAllLeaveRequests } from "@/lib/leaveUtils";
-import { DEFAULT_VALUES } from "@/config/constants";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
-import { FileText, MessageSquare } from "lucide-react";
-import { cn } from "@/lib/utils";
-
-interface Student {
-  id: string;
-  userId: string;
-  displayName: string;
-  email: string;
-  role: string;
-  status: "present" | "absent" | "late" | "active";
-  createdAt: string;
-}
+import { fetchTeacherClasses, type Class } from "@/lib/classUtils";
+import { fetchTeacherAttendance, getLocalYMD } from "@/lib/attendanceUtils";
+import { subscribeToAllLeaveRequests, type LeaveRequest } from "@/lib/leaveUtils";
+import { DEFAULT_VALUES, ATTENDANCE_WEIGHTS } from "@/config/constants";
+import { useNavigate } from "react-router-dom";
 
 export default function TeacherDashboard() {
   const { userData, loading } = useAuth();
-  const [students, setStudents] = useState<Student[]>([]);
-  const [studentsLoading, setStudentsLoading] = useState(true);
+  const navigate = useNavigate();
   const [classes, setClasses] = useState<Class[]>([]);
-  const [attendanceStats, setAttendanceStats] = useState({
-    attendanceRate: DEFAULT_VALUES.ATTENDANCE_RATE as number,
-    totalClasses: DEFAULT_VALUES.TOTAL_CLASSES as number,
-    classesToday: DEFAULT_VALUES.CLASSES_TODAY as number,
-    totalStudents: DEFAULT_VALUES.TOTAL_STUDENTS as number
+  const [todayClasses, setTodayClasses] = useState<Class[]>([]);
+  const [attendanceSummary, setAttendanceSummary] = useState({
+    todayPresent: 0,
+    todayAbsent: 0,
+    todayLate: 0,
+    todayTotal: 0,
+    overallRate: 0,
   });
-  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
-  const [scheduleData, setScheduleData] = useState({
-    classId: '',
-    schedule: '',
-    room: ''
-  });
-  const [savingSchedule, setSavingSchedule] = useState(false);
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [leaveLoading, setLeaveLoading] = useState(true);
-  const [reviewData, setReviewData] = useState({
-    requestId: '',
-    comments: '',
-    status: '' as 'approved' | 'rejected'
-  });
-  const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
-  const [submittingReview, setSubmittingReview] = useState(false);
+  const [pendingLeaves, setPendingLeaves] = useState(0);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  // Fetch teacher's classes and students
   useEffect(() => {
+    if (!userData?.userId) return;
+
     const fetchData = async () => {
-      if (!userData?.userId) return;
-
       try {
-        // Fetch teacher's classes
+        // 1. Fetch assigned classes
         const teacherClasses = await fetchTeacherClasses(userData.userId);
-        setClasses(teacherClasses.filter(c => c.status === 'active'));
+        const activeClasses = teacherClasses.filter(c => c.status === 'active');
+        setClasses(activeClasses);
 
-        // Fetch all students (for display purposes)
-        const usersCollection = collection(db, 'users');
-        const studentsQuery = query(usersCollection, where('role', '==', 'student'));
-        const studentsSnapshot = await getDocs(studentsQuery);
+        // 2. Determine today's classes from schedule text
+        const today = new Date();
+        const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+        const todayDay = dayNames[today.getDay()];
+        const todaysSchedule = activeClasses.filter(cls =>
+          cls.schedule?.toLowerCase().includes(todayDay)
+        );
+        setTodayClasses(todaysSchedule);
 
-        const studentsData = studentsSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            userId: data.userId || 'N/A',
-            displayName: data.displayName || 'Unknown',
-            email: data.email || 'No email',
-            role: data.role || 'student',
-            status: 'present' as const, // Default attendance status
-            createdAt: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : 'Unknown'
-          } as Student;
+        // 3. Fetch today's attendance summary
+        const todayStr = getLocalYMD();
+        const allRecords = await fetchTeacherAttendance(userData.userId);
+        const todayRecords = allRecords.filter(r => r.date === todayStr);
+
+        const present = todayRecords.filter(r => r.status === 'present').length;
+        const absent = todayRecords.filter(r => r.status === 'absent').length;
+        const late = todayRecords.filter(r => r.status === 'late').length;
+
+        // Overall attendance rate
+        let overallRate = 0;
+        if (allRecords.length > 0) {
+          const totalPresent = allRecords.filter(r => r.status === 'present').length;
+          const totalLate = allRecords.filter(r => r.status === 'late').length;
+          const totalExcused = allRecords.filter(r => r.status === 'excused').length;
+          overallRate = Math.round((
+            (totalPresent * ATTENDANCE_WEIGHTS.PRESENT) +
+            (totalLate * ATTENDANCE_WEIGHTS.LATE) +
+            (totalExcused * ATTENDANCE_WEIGHTS.EXCUSED)
+          ) / allRecords.length * 100);
+        }
+
+        setAttendanceSummary({
+          todayPresent: present,
+          todayAbsent: absent,
+          todayLate: late,
+          todayTotal: todayRecords.length,
+          overallRate,
         });
-        setStudents(studentsData);
-
-        // Set default stats for now to make page visible
-        setAttendanceStats({
-          attendanceRate: DEFAULT_VALUES.ATTENDANCE_RATE,
-          totalClasses: teacherClasses.length,
-          classesToday: teacherClasses.filter(c => c.status === 'active').length,
-          totalStudents: teacherClasses.reduce((acc, cls) => acc + (cls.students || DEFAULT_VALUES.STUDENT_COUNT), DEFAULT_VALUES.STUDENT_COUNT)
-        });
-
       } catch (error) {
-        console.error('Error fetching teacher data:', error);
+        console.error('Error fetching dashboard data:', error);
       } finally {
-        setStudentsLoading(false);
+        setDataLoading(false);
       }
     };
 
-    const unsubscribeLeave = subscribeToAllLeaveRequests((allRequests) => {
-      setLeaveRequests(allRequests);
-      setLeaveLoading(false);
+    // Subscribe to leave requests
+    const unsubscribe = subscribeToAllLeaveRequests((requests) => {
+      setPendingLeaves(requests.filter(r => r.status === 'pending').length);
     });
 
     fetchData();
-    return () => {
-      unsubscribeLeave();
-    };
+    return () => unsubscribe();
   }, [userData]);
-
-
-
-  const [selectedClass, setSelectedClass] = useState(classes.length > DEFAULT_VALUES.STUDENT_COUNT ? classes[DEFAULT_VALUES.STUDENT_COUNT] : {
-    id: "default",
-    name: "No Classes Available",
-    subject: "N/A",
-    grade: "N/A",
-    students: DEFAULT_VALUES.STUDENT_COUNT,
-    schedule: "Not scheduled",
-    room: "N/A"
-  });
-
-  // Update selectedClass when classes change
-  useEffect(() => {
-    if (classes.length > DEFAULT_VALUES.STUDENT_COUNT) {
-      setSelectedClass(classes[DEFAULT_VALUES.STUDENT_COUNT]);
-    } else {
-      setSelectedClass({
-        id: "default",
-        name: "No Classes Available",
-        subject: "N/A",
-        grade: "N/A",
-        students: DEFAULT_VALUES.STUDENT_COUNT,
-        schedule: "Not scheduled",
-        room: "N/A"
-      });
-    }
-  }, [students.length]);
-
-  const reports = [
-    { period: "This Week", attendance: DEFAULT_VALUES.ATTENDANCE_RATE, trend: "up" },
-    { period: "This Month", attendance: DEFAULT_VALUES.ATTENDANCE_RATE, trend: "up" },
-    { period: "This Semester", attendance: DEFAULT_VALUES.ATTENDANCE_RATE, trend: "up" }
-  ];
 
   if (loading) {
     return (
@@ -172,93 +113,19 @@ export default function TeacherDashboard() {
     );
   }
 
-  const handleAttendanceChange = (studentId: string, status: "present" | "absent" | "late") => {
-    setStudents(prev =>
-      prev.map(s => s.id === studentId ? { ...s, status } : s)
-    );
-  };
-
-  const handleSaveSchedule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!scheduleData.classId) {
-      toast.error("Please select a class");
-      return;
-    }
-
-    try {
-      setSavingSchedule(true);
-      await updateClass(scheduleData.classId, {
-        schedule: scheduleData.schedule,
-        room: scheduleData.room
-      });
-
-      // Update local state
-      setClasses(prev => prev.map(c =>
-        c.id === scheduleData.classId
-          ? { ...c, schedule: scheduleData.schedule, room: scheduleData.room }
-          : c
-      ));
-
-      toast.success("Schedule updated successfully");
-      setIsScheduleDialogOpen(false);
-      setScheduleData({ classId: '', schedule: '', room: '' });
-    } catch (error) {
-      console.error('Error updating schedule:', error);
-      toast.error("Failed to update schedule");
-    } finally {
-      setSavingSchedule(false);
-    }
-  };
-
-  const handleReviewLeave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userData?.displayName) return;
-
-    try {
-      setSubmittingReview(true);
-      await updateLeaveRequestStatus(
-        reviewData.requestId,
-        reviewData.status,
-        userData.displayName,
-        reviewData.comments
-      );
-
-      // Update local state
-      setLeaveRequests(prev => prev.map(r =>
-        r.id === reviewData.requestId
-          ? {
-            ...r,
-            status: reviewData.status,
-            comments: reviewData.comments,
-            reviewedBy: userData.displayName,
-            reviewedAt: new Date().toISOString()
-          }
-          : r
-      ));
-
-      toast.success(`Leave request ${reviewData.status} successfully`);
-      setIsReviewDialogOpen(false);
-      setReviewData({ requestId: '', comments: '', status: 'approved' });
-    } catch (error) {
-      console.error("Failed to update leave request:", error);
-      toast.error("Failed to update leave request");
-    } finally {
-      setSubmittingReview(false);
-    }
-  };
+  const totalStudents = classes.reduce((acc, cls) => acc + (cls.students || 0), 0);
 
   return (
     <DashboardLayout
       role="teacher"
       pageTitle="Teacher Dashboard"
-      pageDescription="Manage your classes and track student progress"
+      pageDescription="Overview of your classes, schedule, and attendance"
     >
       <div className="space-y-6">
-        {/* User Profile */}
         <UserProfile />
 
-        {/* Leave Alerts */}
-        {leaveRequests.filter(r => r.status === 'pending').length > 0 && (
+        {/* Pending Leave Alert */}
+        {pendingLeaves > 0 && (
           <Card className="border-yellow-200 bg-yellow-50/50">
             <CardContent className="p-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -267,7 +134,7 @@ export default function TeacherDashboard() {
                 </div>
                 <div>
                   <p className="font-bold text-yellow-900">
-                    {leaveRequests.filter(r => r.status === 'pending').length} Pending Leave Requests
+                    {pendingLeaves} Pending Leave Request{pendingLeaves > 1 ? 's' : ''}
                   </p>
                   <p className="text-xs text-yellow-700">Students are waiting for your approval</p>
                 </div>
@@ -276,501 +143,233 @@ export default function TeacherDashboard() {
                 size="sm"
                 variant="ghost"
                 className="text-yellow-700 hover:bg-yellow-100"
-                onClick={() => window.location.href = '/teacher/leaves'}
+                onClick={() => navigate('/teacher/leaves')}
               >
-                Review Now <ChevronRight className="ml-2 h-4 w-4" />
+                Review Now <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Main Functionality Tabs */}
-        <Tabs defaultValue="classes" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="classes">My Classes</TabsTrigger>
-            <TabsTrigger value="attendance">Take Attendance</TabsTrigger>
-            <TabsTrigger value="reports">Reports</TabsTrigger>
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="performance">Performance</TabsTrigger>
-          </TabsList>
-
-          {/* View Assigned Classes */}
-          <TabsContent value="classes" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BookOpen className="h-5 w-5" />
-                  My Assigned Classes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {classes.length > 0 ? (
-                    classes.map((cls) => (
-                      <Card key={cls.id} className="border-l-4 border-l-primary">
-                        <CardContent className="p-4">
-                          <div className="flex justify-between items-start mb-3">
-                            <div>
-                              <h3 className="font-semibold text-lg">{cls.name}</h3>
-                              <p className="text-muted-foreground">{cls.subject} • Grade {cls.grade}</p>
-                            </div>
-                            <Badge variant="outline">{cls.students} students</Badge>
-                          </div>
-                          <div className="space-y-2 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              <Clock className="h-4 w-4" />
-                              {cls.schedule}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <BookOpen className="h-4 w-4" />
-                              {cls.room}
-                            </div>
-                          </div>
-                          <div className="flex gap-2 mt-4">
-                            <Button size="sm" variant="outline" className="flex-1">
-                              <Eye className="h-4 w-4 mr-1" />
-                              View Details
-                            </Button>
-                            <Button size="sm" variant="outline">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  ) : (
-                    <div className="col-span-2 text-center py-8">
-                      <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-muted-foreground">No classes assigned</p>
-                      <p className="text-sm text-muted-foreground">Contact admin to get classes assigned</p>
-                    </div>
-                  )}
+        {/* Summary Stats */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <BookOpen className="h-5 w-5 text-blue-600" />
                 </div>
-                <Button className="mt-4" variant="outline">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Request New Class
+                <div>
+                  <p className="text-2xl font-bold">{classes.length}</p>
+                  <p className="text-sm text-muted-foreground">Assigned Classes</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <Users className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{totalStudents}</p>
+                  <p className="text-sm text-muted-foreground">Total Students</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <TrendingUp className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{attendanceSummary.overallRate}%</p>
+                  <p className="text-sm text-muted-foreground">Overall Attendance</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-100 rounded-lg">
+                  <Calendar className="h-5 w-5 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{todayClasses.length}</p>
+                  <p className="text-sm text-muted-foreground">Classes Today</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Today's Schedule */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Clock className="h-5 w-5" />
+                  Today's Schedule
+                </CardTitle>
+                <Button size="sm" variant="ghost" onClick={() => navigate('/teacher/schedule')}>
+                  View All <ChevronRight className="ml-1 h-4 w-4" />
                 </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {dataLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                </div>
+              ) : todayClasses.length === 0 ? (
+                <div className="text-center py-6">
+                  <Calendar className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-muted-foreground text-sm">No classes scheduled for today</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {todayClasses.map((cls) => (
+                    <div key={cls.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium">{cls.name}</p>
+                        <p className="text-sm text-muted-foreground">{cls.subject} • {cls.room || 'No room'}</p>
+                      </div>
+                      <Badge variant="outline">{cls.schedule}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-          {/* Take Attendance */}
-          <TabsContent value="attendance" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+          {/* Today's Attendance Summary */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base">
                   <ClipboardCheck className="h-5 w-5" />
-                  Take Attendance
+                  Today's Attendance
                 </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2">Select Class:</label>
-                  <select
-                    className="w-full p-2 border rounded-lg"
-                    value={selectedClass.id}
-                    onChange={(e) => {
-                      const foundClass = classes.find(c => c.id === e.target.value);
-                      if (foundClass) {
-                        setSelectedClass(foundClass);
-                      }
-                    }}
-                  >
-                    {classes.length > 0 ? (
-                      classes.map((cls) => (
-                        <option key={cls.id} value={cls.id}>{cls.name}</option>
-                      ))
-                    ) : (
-                      <option value="default">No Classes Available</option>
-                    )}
-                  </select>
+                <Button size="sm" variant="ghost" onClick={() => navigate('/teacher/attendance')}>
+                  Take Attendance <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {dataLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                 </div>
+              ) : attendanceSummary.todayTotal === 0 ? (
+                <div className="text-center py-6">
+                  <ClipboardCheck className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-muted-foreground text-sm">No attendance recorded today</p>
+                  <Button size="sm" className="mt-3" onClick={() => navigate('/teacher/attendance')}>
+                    Take Attendance Now
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <CheckCircle2 className="h-5 w-5 text-green-600 mx-auto mb-1" />
+                    <p className="text-2xl font-bold text-green-600">{attendanceSummary.todayPresent}</p>
+                    <p className="text-xs text-muted-foreground">Present</p>
+                  </div>
+                  <div className="text-center p-3 bg-red-50 rounded-lg">
+                    <XCircle className="h-5 w-5 text-red-600 mx-auto mb-1" />
+                    <p className="text-2xl font-bold text-red-600">{attendanceSummary.todayAbsent}</p>
+                    <p className="text-xs text-muted-foreground">Absent</p>
+                  </div>
+                  <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                    <AlertCircle className="h-5 w-5 text-yellow-600 mx-auto mb-1" />
+                    <p className="text-2xl font-bold text-yellow-600">{attendanceSummary.todayLate}</p>
+                    <p className="text-xs text-muted-foreground">Late</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-                <div className="bg-muted/30 p-4 rounded-lg mb-4">
-                  <h3 className="font-semibold mb-2">{selectedClass.name}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date().toLocaleDateString()} • {selectedClass.students} students
+        {/* Assigned Classes Overview */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BookOpen className="h-5 w-5" />
+                Assigned Classes
+              </CardTitle>
+              <Button size="sm" variant="ghost" onClick={() => navigate('/teacher/classes')}>
+                View All <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {dataLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+              </div>
+            ) : classes.length === 0 ? (
+              <div className="text-center py-8">
+                <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                <p className="text-muted-foreground">No classes assigned yet</p>
+                <p className="text-sm text-muted-foreground">Contact admin to get classes assigned</p>
+              </div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {classes.slice(0, 4).map((cls) => (
+                  <div key={cls.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/10 transition-colors">
+                    <div>
+                      <p className="font-medium">{cls.name}</p>
+                      <p className="text-sm text-muted-foreground">{cls.subject} • Grade {cls.grade}</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant="outline">{cls.students} students</Badge>
+                    </div>
+                  </div>
+                ))}
+                {classes.length > 4 && (
+                  <p className="text-sm text-muted-foreground text-center col-span-2">
+                    +{classes.length - 4} more classes
                   </p>
-                </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-                <div className="space-y-3">
-                  {studentsLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-                        <p className="text-muted-foreground">Loading students...</p>
-                      </div>
-                    </div>
-                  ) : students.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Users className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-muted-foreground">No students found</p>
-                      <p className="text-sm text-muted-foreground">Students will appear here once they register</p>
-                    </div>
-                  ) : (
-                    students.map((student) => (
-                      <div key={student.id} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                            <Users className="h-5 w-5 text-primary" />
-                          </div>
-                          <div>
-                            <p className="font-medium">{student.displayName}</p>
-                            <p className="text-sm text-muted-foreground">{student.userId}</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant={student.status === "present" ? "default" : "outline"}
-                            onClick={() => handleAttendanceChange(student.id, "present")}
-                            className="gap-1"
-                          >
-                            <CheckCircle2 className="h-4 w-4" />
-                            Present
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={student.status === "absent" ? "destructive" : "outline"}
-                            onClick={() => handleAttendanceChange(student.id, "absent")}
-                            className="gap-1"
-                          >
-                            <XCircle className="h-4 w-4" />
-                            Absent
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={student.status === "late" ? "secondary" : "outline"}
-                            onClick={() => handleAttendanceChange(student.id, "late")}
-                            className="gap-1"
-                          >
-                            <AlertCircle className="h-4 w-4" />
-                            Late
-                          </Button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className="flex gap-2 mt-6">
-                  <Button className="flex-1">
-                    Save Attendance
-                  </Button>
-                  <Button variant="outline">
-                    Mark All Present
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* View Reports */}
-          <TabsContent value="reports" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Attendance Reports
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-3 mb-6">
-                  {reports.map((report, index) => (
-                    <Card key={index}>
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm text-muted-foreground">{report.period}</p>
-                            <p className="text-2xl font-bold">{report.attendance}%</p>
-                          </div>
-                          <div className={`p-2 rounded-full ${report.trend === "up" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
-                            }`}>
-                            <TrendingUp className={`h-4 w-4 ${report.trend === "down" ? "rotate-180" : ""}`} />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="font-semibold">Generate Reports</h3>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium">Class:</label>
-                      <select className="w-full p-2 border rounded-lg">
-                        <option>All Classes</option>
-                        {classes.length > 0 ? (
-                          classes.map((cls) => (
-                            <option key={cls.id}>{cls.name}</option>
-                          ))
-                        ) : (
-                          <option>No Classes Available</option>
-                        )}
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium">Period:</label>
-                      <select className="w-full p-2 border rounded-lg">
-                        <option>This Week</option>
-                        <option>This Month</option>
-                        <option>This Semester</option>
-                        <option>Custom Range</option>
-                      </select>
-                    </div>
-                  </div>
-                  <Button className="w-full">
-                    Generate Report
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Manage Schedule */}
-          <TabsContent value="schedule" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5" />
-                    Class Schedule
-                  </CardTitle>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsScheduleDialogOpen(true)}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Schedule
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {classes.length > 0 ? (
-                    classes.map((cls) => (
-                      <div key={cls.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
-                          <h3 className="font-semibold">{cls.name}</h3>
-                          <p className="text-sm text-muted-foreground">{cls.schedule}</p>
-                          <p className="text-sm text-muted-foreground">{cls.room}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline">
-                            <Edit className="h-4 w-4 mr-1" />
-                            Edit
-                          </Button>
-                          <Button size="sm" variant="outline">
-                            <Calendar className="h-4 w-4 mr-1" />
-                            View Calendar
-                          </Button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8">
-                      <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-muted-foreground">No classes scheduled</p>
-                      <p className="text-sm text-muted-foreground">Contact admin to get classes assigned</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-
-
-          {/* Track Performance */}
-          <TabsContent value="performance" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  Student Performance Tracking
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2">Select Class:</label>
-                  <select className="w-full p-2 border rounded-lg">
-                    {classes.length > 0 ? (
-                      classes.map((cls) => (
-                        <option key={cls.id}>{cls.name}</option>
-                      ))
-                    ) : (
-                      <option>No Classes Available</option>
-                    )}
-                  </select>
-                </div>
-
-                <div className="space-y-3">
-                  {studentsLoading ? (
-                    <div className="flex items-center justify-center py-4">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                    </div>
-                  ) : students.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Users className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-muted-foreground">No students found</p>
-                    </div>
-                  ) : (
-                    students.map((student) => (
-                      <div key={student.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                            <Users className="h-5 w-5 text-primary" />
-                          </div>
-                          <div>
-                            <p className="font-medium">{student.displayName}</p>
-                            <p className="text-sm text-muted-foreground">{student.userId}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-center">
-                            <p className="text-sm text-muted-foreground">Attendance</p>
-                            <p className="font-semibold">{attendanceStats.attendanceRate}%</p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-sm text-muted-foreground">Performance</p>
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Good</Badge>
-                          </div>
-                          <Button size="sm" variant="outline">
-                            <Eye className="h-4 w-4 mr-1" />
-                            Details
-                          </Button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className="mt-6 p-4 bg-muted/30 rounded-lg">
-                  <h3 className="font-semibold mb-2">Class Performance Summary</h3>
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <p className="text-2xl font-bold text-green-600">{attendanceStats.attendanceRate}%</p>
-                      <p className="text-sm text-muted-foreground">Average Attendance</p>
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-primary">{attendanceStats.totalStudents}</p>
-                      <p className="text-sm text-muted-foreground">Total Students</p>
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-yellow-600">{attendanceStats.totalClasses}</p>
-                      <p className="text-sm text-muted-foreground">My Classes</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        {/* Quick Actions */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-4">
+              <Button variant="outline" className="justify-start h-auto py-3" onClick={() => navigate('/teacher/attendance')}>
+                <ClipboardCheck className="h-4 w-4 mr-2 shrink-0" />
+                <span>Take Attendance</span>
+              </Button>
+              <Button variant="outline" className="justify-start h-auto py-3" onClick={() => navigate('/teacher/students')}>
+                <Users className="h-4 w-4 mr-2 shrink-0" />
+                <span>View Students</span>
+              </Button>
+              <Button variant="outline" className="justify-start h-auto py-3" onClick={() => navigate('/teacher/reports')}>
+                <FileText className="h-4 w-4 mr-2 shrink-0" />
+                <span>Generate Report</span>
+              </Button>
+              <Button variant="outline" className="justify-start h-auto py-3" onClick={() => navigate('/teacher/leaves')}>
+                <MessageSquare className="h-4 w-4 mr-2 shrink-0" />
+                <span>Leave Requests</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-
-      <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add/Update Class Schedule</DialogTitle>
-            <DialogDescription>
-              Set the schedule and room for your assigned classes
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSaveSchedule}>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="classSelect">Select Class</Label>
-                <select
-                  id="classSelect"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
-                  value={scheduleData.classId}
-                  onChange={(e) => {
-                    const cls = classes.find(c => c.id === e.target.value);
-                    setScheduleData(prev => ({
-                      ...prev,
-                      classId: e.target.value,
-                      schedule: cls?.schedule || '',
-                      room: cls?.room || ''
-                    }));
-                  }}
-                  required
-                >
-                  <option value="">Select a class...</option>
-                  {classes.map((cls) => (
-                    <option key={cls.id} value={cls.id}>{cls.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="scheduleInput">Schedule</Label>
-                <Input
-                  id="scheduleInput"
-                  value={scheduleData.schedule}
-                  onChange={(e) => setScheduleData(prev => ({ ...prev, schedule: e.target.value }))}
-                  placeholder="e.g. Mon/Wed 10:00 AM - 12:00 PM"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="roomInput">Room</Label>
-                <Input
-                  id="roomInput"
-                  value={scheduleData.room}
-                  onChange={(e) => setScheduleData(prev => ({ ...prev, room: e.target.value }))}
-                  placeholder="e.g. Room 204 or Lab A"
-                  required
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsScheduleDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={savingSchedule}>
-                {savingSchedule ? "Saving..." : "Save Schedule"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Leave Review Dialog */}
-      <Dialog open={isReviewDialogOpen} onOpenChange={setIsReviewDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{reviewData.status === 'approved' ? 'Approve' : 'Reject'} Leave Request</DialogTitle>
-            <DialogDescription>
-              Add a comment or feedback for the student regarding this request.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleReviewLeave}>
-            <div className="py-4">
-              <Label htmlFor="reviewComments" className="block mb-2">Review Comments</Label>
-              <Textarea
-                id="reviewComments"
-                placeholder="e.g. Please bring medical certificate upon return."
-                className="min-h-[100px]"
-                value={reviewData.comments}
-                onChange={(e) => setReviewData(prev => ({ ...prev, comments: e.target.value }))}
-                required={reviewData.status === 'rejected'}
-              />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsReviewDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                className={reviewData.status === 'approved' ? "bg-green-600 hover:bg-green-700" : ""}
-                disabled={submittingReview}
-              >
-                {submittingReview ? "Processing..." : `Confirm ${reviewData.status === 'approved' ? 'Approval' : 'Rejection'}`}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </DashboardLayout>
   );
 }
