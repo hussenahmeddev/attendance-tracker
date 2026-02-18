@@ -69,13 +69,17 @@ export default function AdminCalendar() {
 
   const [scheduleFormData, setScheduleFormData] = useState({
     classId: '',
+    className: '',
+    teacherId: '',
+    teacherName: '',
     subject: '',
     dayOfWeek: 1,
     startTime: '',
     endTime: '',
     room: '',
     effectiveFrom: '',
-    effectiveTo: ''
+    effectiveTo: '',
+    isActive: true
   });
 
   const [changeFormData, setChangeFormData] = useState({
@@ -268,13 +272,17 @@ export default function AdminCalendar() {
     setSelectedSchedule(null);
     setScheduleFormData({
       classId: '',
+      className: '',
+      teacherId: '',
+      teacherName: '',
       subject: '',
       dayOfWeek: 1,
       startTime: '',
       endTime: '',
       room: '',
       effectiveFrom: '',
-      effectiveTo: ''
+      effectiveTo: '',
+      isActive: true
     });
   };
 
@@ -851,7 +859,7 @@ export default function AdminCalendar() {
                               onClick={async () => {
                                 if (confirm('Are you sure you want to delete this schedule?')) {
                                   try {
-                                    await updateCalendarEvent(schedule.id, { isActive: false });
+                                    await updateCalendarEvent(schedule.id, { status: 'cancelled' });
                                     toast.success("Schedule deleted successfully");
                                   } catch (error) {
                                     toast.error("Failed to delete schedule");

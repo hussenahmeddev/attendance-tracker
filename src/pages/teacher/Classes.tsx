@@ -354,12 +354,12 @@ export default function TeacherClasses() {
               <div className="border-t pt-4">
                 <div className="flex justify-between items-center mb-2">
                   <h4 className="font-semibold">Enrollment</h4>
-                  <Badge variant="outline">{selectedClass.students} / {selectedClass.maxStudents || DEFAULT_VALUES.MAX_STUDENTS_PER_CLASS}</Badge>
+                  <Badge variant="outline">{selectedClass.students} / {selectedClass.maxStudents || 30}</Badge>
                 </div>
                 <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
                   <div
                     className="bg-primary h-full"
-                    style={{ width: `${Math.min(100, (selectedClass.students / (selectedClass.maxStudents || DEFAULT_VALUES.MAX_STUDENTS_PER_CLASS)) * 100)}%` }}
+                    style={{ width: `${Math.min(100, (selectedClass.students / (selectedClass.maxStudents || 30)) * 100)}%` }}
                   />
                 </div>
               </div>
