@@ -17,6 +17,7 @@ interface UserData {
   email: string;
   displayName: string;
   role: 'admin' | 'teacher' | 'student';
+  section?: string; // Section field for students/teachers
   status: 'active' | 'deactivate';
   mustChangePassword?: boolean;
   createdAt?: string;
@@ -26,7 +27,7 @@ interface AuthContextType {
   currentUser: User | null;
   userData: UserData | null;
   loading: boolean;
-  createUser: (email: string, password: string, name: string, role: string) => Promise<void>;
+  createUser: (email: string, password: string, name: string, role: string, section?: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<UserData>;
   logout: () => Promise<void>;
 }
@@ -91,7 +92,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const isTestMode = window.location.search.includes('test=true');
 
   // Use the secondary app for creating users to avoid logging out the admin
-  const createUser = async (email: string, password: string, name: string, role: string) => {
+  const createUser = async (email: string, password: string, name: string, role: string, section?: string) => {
     const secondaryApp = getSecondaryApp();
     const secondaryAuth = getAuth(secondaryApp);
 
@@ -111,6 +112,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       email: user.email!,
       displayName: name,
       role: role as 'admin' | 'teacher' | 'student',
+      section: section, // Add section field
       status: 'active', // Default status is active
       mustChangePassword: true, // Force password change for new users
       createdAt: new Date().toISOString(),

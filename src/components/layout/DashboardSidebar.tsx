@@ -16,7 +16,6 @@ import {
   FileText,
   Clock,
   UserCheck,
-  Home,
   ChevronLeft,
   ChevronRight,
   Wrench,
@@ -40,8 +39,8 @@ const adminNavItems: NavItem[] = [
   { title: "Attendance", href: "/admin/attendance", icon: ClipboardCheck },
   { title: "Reports", href: "/admin/reports", icon: BarChart3 },
   { title: "Calendar", href: "/admin/calendar", icon: Calendar },
-  { title: "Settings", href: "/admin/settings", icon: Settings },
   { title: "System Utils", href: "/admin/system-utils", icon: Wrench },
+  { title: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
 const teacherNavItems: NavItem[] = [
@@ -52,6 +51,7 @@ const teacherNavItems: NavItem[] = [
   { title: "Reports", href: "/teacher/reports", icon: FileText },
   { title: "Schedule", href: "/teacher/schedule", icon: Clock },
   { title: "Leave Requests", href: "/teacher/leaves", icon: MessageSquare },
+  { title: "Settings", href: "/teacher/settings", icon: Settings },
 ];
 
 const studentNavItems: NavItem[] = [
@@ -60,6 +60,7 @@ const studentNavItems: NavItem[] = [
   { title: "Leave Request", href: "/student/leave", icon: FileText },
   { title: "Schedule", href: "/student/schedule", icon: Calendar },
   { title: "Notifications", href: "/student/notifications", icon: Bell },
+  { title: "Settings", href: "/student/settings", icon: Settings },
 ];
 
 const navItemsByRole: Record<UserRole, NavItem[]> = {
@@ -72,10 +73,11 @@ interface DashboardSidebarProps {
   role: UserRole;
   userName?: string;
   userEmail?: string;
+  userSection?: string;
   className?: string;
 }
 
-export function DashboardSidebar({ role, userName = "User", userEmail = "", className }: DashboardSidebarProps) {
+export function DashboardSidebar({ role, userName = "User", userEmail = "", userSection = "", className }: DashboardSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -149,6 +151,7 @@ export function DashboardSidebar({ role, userName = "User", userEmail = "", clas
               </p>
               <p className="truncate text-xs text-sidebar-foreground/60">
                 {roleLabels[role]}
+                {userSection && ` • ${userSection}`}
               </p>
             </div>
           </div>
@@ -181,15 +184,6 @@ export function DashboardSidebar({ role, userName = "User", userEmail = "", clas
 
       {/* Bottom Actions */}
       <div className="border-t border-sidebar-border p-3 space-y-1">
-        <Link
-          to="/"
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-all duration-200"
-          )}
-        >
-          <Home className="h-5 w-5 shrink-0" />
-          {!collapsed && <span>Home</span>}
-        </Link>
         <button
           onClick={handleLogout}
           className={cn(

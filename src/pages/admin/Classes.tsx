@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   BookOpen,
   Plus,
@@ -22,7 +23,12 @@ import {
   Eye,
   Settings,
   CheckCircle,
-  XCircle
+  XCircle,
+  BarChart3,
+  GraduationCap,
+  UserCheck,
+  ExternalLink,
+  ArrowRight
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { collection, getDocs } from "firebase/firestore";
@@ -43,6 +49,7 @@ import {
   type StudentInfo
 } from "@/lib/classUtils";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 interface User {
   id: string;
@@ -73,11 +80,24 @@ export default function AdminClasses() {
   const [enrolledStudents, setEnrolledStudents] = useState<StudentInfo[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
+  // Schedule Management State
+  const [editScheduleOpen, setEditScheduleOpen] = useState(false);
+  const [selectedClassForSchedule, setSelectedClassForSchedule] = useState<Class | null>(null);
+  const [scheduleFormData, setScheduleFormData] = useState({
+    schedule: '',
+    room: '',
+    startTime: '',
+    endTime: '',
+    days: [] as string[]
+  });
+  const [updatingSchedule, setUpdatingSchedule] = useState(false);
+
   const [formData, setFormData] = useState<ClassFormData>({
     name: '',
     subject: '',
     teacher: '',
     grade: '',
+    section: '',
     room: '',
     maxStudents: ''
   });
@@ -150,6 +170,7 @@ export default function AdminClasses() {
         name: formData.name,
         subject: formData.subject,
         grade: formData.grade || 'All',
+        section: formData.section || '',
         teacher: selectedTeacher.displayName,
         teacherId: selectedTeacher.userId,
         room: formData.room || 'TBD',
@@ -164,7 +185,7 @@ export default function AdminClasses() {
       const localClass = { id: classId, ...newClassData };
 
       setClasses(prev => [localClass, ...prev]);
-      setFormData({ name: '', subject: '', teacher: '', grade: '', room: '', maxStudents: '' });
+      setFormData({ name: '', subject: '', teacher: '', grade: '', section: '', room: '', maxStudents: '' });
       setIsAddClassOpen(false);
       toast.success('Class created successfully!');
     } catch (error) {
@@ -264,6 +285,79 @@ export default function AdminClasses() {
     }
   };
 
+  const handleEditSchedule = (cls: Class) => {
+    setSelectedClassForSchedule(cls);
+    // Parse existing schedule if it exists
+    const scheduleText = cls.schedule || '';
+    setScheduleFormData({
+      schedule: scheduleText,
+      room: cls.room || '',
+      startTime: '',
+      endTime: '',
+      days: []
+    });
+    setEditScheduleOpen(true);
+  };
+
+  const handleUpdateSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClassForSchedule) return;
+
+    setUpdatingSchedule(true);
+    try {
+      const scheduleText = scheduleFormData.days.length > 0 && scheduleFormData.startTime && scheduleFormData.endTime
+        ? `${scheduleFormData.days.join(', ')} ${scheduleFormData.startTime} - ${scheduleFormData.endTime}`
+        : scheduleFormData.schedule || 'To be scheduled';
+
+      const updates = {
+        schedule: scheduleText,
+        room: scheduleFormData.room || 'TBD'
+      };
+
+      await updateClass(selectedClassForSchedule.id, updates);
+
+      // Update local state
+      setClasses(prev => prev.map(cls => 
+        cls.id === selectedClassForSchedule.id 
+          ? { ...cls, ...updates }
+          : cls
+      ));
+
+      setEditScheduleOpen(false);
+      toast.success('Schedule updated successfully!');
+    } catch (error) {
+      console.error('Error updating schedule:', error);
+      toast.error('Failed to update schedule');
+    } finally {
+      setUpdatingSchedule(false);
+    }
+  };
+
+  const handleViewCalendar = (cls: Class) => {
+    // For now, show a simple alert with class schedule info
+    // In a real implementation, this could open a calendar view or navigate to a calendar page
+    toast.info(`Calendar view for ${cls.name}`, {
+      description: `Schedule: ${cls.schedule} | Room: ${cls.room}`,
+      duration: 5000
+    });
+  };
+
+  const handleAddSchedule = () => {
+    // Open the edit schedule dialog without a selected class
+    setSelectedClassForSchedule(null);
+    setScheduleFormData({
+      schedule: '',
+      room: '',
+      startTime: '',
+      endTime: '',
+      days: []
+    });
+    toast.info("Add Schedule functionality", {
+      description: "This would typically open a form to create a new schedule or time slot.",
+      duration: 3000
+    });
+  };
+
   const filteredClasses = classes.filter(cls => {
     const matchesSearch = cls.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       cls.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -283,6 +377,82 @@ export default function AdminClasses() {
     >
       <div className="space-y-6">
         <UserProfile />
+
+        {/* Classes Management Overview */}
+        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-blue-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="h-6 w-6 text-primary" />
+              Classes Management Center
+            </CardTitle>
+            <p className="text-muted-foreground">
+              Comprehensive class management with integrated navigation to attendance, schedules, and dashboards
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="p-4 bg-white rounded-lg border">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <BookOpen className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Create Classes</div>
+                    <div className="text-sm text-muted-foreground">Add new classes with teachers</div>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  • Assign teachers • Set grade/section • Configure room & capacity
+                </div>
+              </div>
+              
+              <div className="p-4 bg-white rounded-lg border">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <Users className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Manage Students</div>
+                    <div className="text-sm text-muted-foreground">Enroll & remove students</div>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  • Add/remove students • View enrollment status • Manage capacity
+                </div>
+              </div>
+              
+              <div className="p-4 bg-white rounded-lg border">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <Calendar className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Auto-Navigation</div>
+                    <div className="text-sm text-muted-foreground">Quick access to all features</div>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  • Attendance records • Class schedules • Teacher/Student dashboards
+                </div>
+              </div>
+              
+              <div className="p-4 bg-white rounded-lg border">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-orange-100 rounded-lg">
+                    <BarChart3 className="h-5 w-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <div className="font-semibold">Analytics</div>
+                    <div className="text-sm text-muted-foreground">Class performance insights</div>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  • Attendance reports • Class statistics • Performance tracking
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <Tabs defaultValue="all-classes" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
@@ -481,7 +651,10 @@ export default function AdminClasses() {
                               <div className="flex justify-between items-start mb-3">
                                 <div>
                                   <h3 className="font-semibold text-lg">{cls.name}</h3>
-                                  <p className="text-muted-foreground">{cls.subject} • Grade {cls.grade}</p>
+                                  <p className="text-muted-foreground">
+                                    {cls.subject} • Grade {cls.grade}
+                                    {cls.section && ` • Section ${cls.section}`}
+                                  </p>
                                 </div>
                                 <Badge variant={
                                   cls.status === "active" ? "default" :
@@ -509,6 +682,48 @@ export default function AdminClasses() {
                                   {cls.room}
                                 </div>
                               </div>
+
+                              {/* Quick Navigation Links */}
+                              {cls.status === 'active' && (
+                                <div className="mb-4 p-3 bg-muted/30 rounded-lg">
+                                  <h4 className="text-sm font-medium mb-2 text-muted-foreground">Quick Access</h4>
+                                  <div className="grid grid-cols-2 gap-2 text-xs">
+                                    <Link 
+                                      to={`/admin/attendance?classId=${cls.id}`}
+                                      className="flex items-center gap-1 p-2 rounded bg-background hover:bg-primary/10 transition-colors"
+                                    >
+                                      <UserCheck className="h-3 w-3" />
+                                      <span>Attendance</span>
+                                      <ExternalLink className="h-3 w-3 ml-auto" />
+                                    </Link>
+                                    <Link 
+                                      to={`/admin/calendar?classId=${cls.id}`}
+                                      className="flex items-center gap-1 p-2 rounded bg-background hover:bg-primary/10 transition-colors"
+                                    >
+                                      <Calendar className="h-3 w-3" />
+                                      <span>Schedule</span>
+                                      <ExternalLink className="h-3 w-3 ml-auto" />
+                                    </Link>
+                                    <Link 
+                                      to={`/teacher?teacherId=${cls.teacherId}`}
+                                      className="flex items-center gap-1 p-2 rounded bg-background hover:bg-primary/10 transition-colors"
+                                    >
+                                      <GraduationCap className="h-3 w-3" />
+                                      <span>Teacher</span>
+                                      <ExternalLink className="h-3 w-3 ml-auto" />
+                                    </Link>
+                                    <Link 
+                                      to={`/admin/reports?classId=${cls.id}`}
+                                      className="flex items-center gap-1 p-2 rounded bg-background hover:bg-primary/10 transition-colors"
+                                    >
+                                      <BarChart3 className="h-3 w-3" />
+                                      <span>Reports</span>
+                                      <ExternalLink className="h-3 w-3 ml-auto" />
+                                    </Link>
+                                  </div>
+                                </div>
+                              )}
+
                               <div className="flex gap-2">
                                 {cls.status === 'pending' ? (
                                   <>
@@ -538,9 +753,13 @@ export default function AdminClasses() {
                                       onClick={() => handleViewDetails(cls)}
                                     >
                                       <Eye className="h-4 w-4 mr-1" />
-                                      View Details
+                                      Manage Students
                                     </Button>
-                                    <Button size="sm" variant="outline">
+                                    <Button 
+                                      size="sm" 
+                                      variant="outline"
+                                      onClick={() => handleEditSchedule(cls)}
+                                    >
                                       <Edit className="h-4 w-4" />
                                     </Button>
                                   </>
@@ -602,6 +821,15 @@ export default function AdminClasses() {
                           </SelectContent>
                         </Select>
                       </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="section">Section</Label>
+                        <Input
+                          id="section"
+                          placeholder="e.g., A, B, Advanced"
+                          value={formData.section}
+                          onChange={(e) => setFormData(prev => ({ ...prev, section: e.target.value }))}
+                        />
+                      </div>
                     </div>
                     <div className="space-y-4">
                       <div className="space-y-2">
@@ -647,7 +875,7 @@ export default function AdminClasses() {
                     <Button type="submit" className="flex-1" disabled={creating}>
                       {creating ? 'Creating...' : 'Create Class'}
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => setFormData({ name: '', subject: '', teacher: '', grade: '', room: '', maxStudents: '' })}>
+                    <Button type="button" variant="outline" onClick={() => setFormData({ name: '', subject: '', teacher: '', grade: '', section: '', room: '', maxStudents: '' })}>
                       Clear Form
                     </Button>
                   </div>
@@ -704,7 +932,9 @@ export default function AdminClasses() {
                           <SelectContent>
                             {classes.filter(cls => cls.status === 'active').map((cls) => (
                               <SelectItem key={cls.id} value={cls.id}>
-                                {cls.name} - {cls.subject} ({cls.students}/{cls.maxStudents})
+                                {cls.name} - {cls.subject} 
+                                {cls.section && ` (Section ${cls.section})`}
+                                ({cls.students}/{cls.maxStudents} students)
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -770,11 +1000,19 @@ export default function AdminClasses() {
                         <p className="text-sm text-muted-foreground">{cls.room} • {cls.teacher}</p>
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleEditSchedule(cls)}
+                        >
                           <Edit className="h-4 w-4 mr-1" />
                           Edit Schedule
                         </Button>
-                        <Button size="sm" variant="outline">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleViewCalendar(cls)}
+                        >
                           <Calendar className="h-4 w-4 mr-1" />
                           View Calendar
                         </Button>
@@ -782,7 +1020,11 @@ export default function AdminClasses() {
                     </div>
                   ))}
                 </div>
-                <Button className="mt-4" variant="outline">
+                <Button 
+                  className="mt-4" 
+                  variant="outline"
+                  onClick={handleAddSchedule}
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Schedule
                 </Button>
@@ -792,54 +1034,274 @@ export default function AdminClasses() {
         </Tabs>
       </div>
 
-      {/* View Details Dialog */}
+      {/* Manage Students Dialog */}
       <Dialog open={viewDetailsOpen} onOpenChange={setViewDetailsOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Class Details: {selectedClassDetails?.name}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Manage Students: {selectedClassDetails?.name}
+            </DialogTitle>
             <DialogDescription>
               {selectedClassDetails?.subject} • {selectedClassDetails?.schedule} • {selectedClassDetails?.room}
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4">
-            <h3 className="font-semibold mb-3">Enrolled Students ({enrolledStudents.length})</h3>
+            {/* Class Navigation Links */}
+            <div className="mb-6 p-4 bg-muted/30 rounded-lg">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <ArrowRight className="h-4 w-4" />
+                Class Management Links
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Link 
+                  to={`/admin/attendance?classId=${selectedClassDetails?.id}`}
+                  className="flex items-center gap-2 p-3 rounded-lg bg-background hover:bg-primary/10 transition-colors border"
+                >
+                  <UserCheck className="h-4 w-4 text-green-600" />
+                  <div>
+                    <div className="font-medium text-sm">Attendance</div>
+                    <div className="text-xs text-muted-foreground">View records</div>
+                  </div>
+                  <ExternalLink className="h-3 w-3 ml-auto" />
+                </Link>
+                <Link 
+                  to={`/admin/calendar?classId=${selectedClassDetails?.id}`}
+                  className="flex items-center gap-2 p-3 rounded-lg bg-background hover:bg-primary/10 transition-colors border"
+                >
+                  <Calendar className="h-4 w-4 text-blue-600" />
+                  <div>
+                    <div className="font-medium text-sm">Schedule</div>
+                    <div className="text-xs text-muted-foreground">Class times</div>
+                  </div>
+                  <ExternalLink className="h-3 w-3 ml-auto" />
+                </Link>
+                <Link 
+                  to={`/teacher?teacherId=${selectedClassDetails?.teacherId}`}
+                  className="flex items-center gap-2 p-3 rounded-lg bg-background hover:bg-primary/10 transition-colors border"
+                >
+                  <GraduationCap className="h-4 w-4 text-purple-600" />
+                  <div>
+                    <div className="font-medium text-sm">Teacher</div>
+                    <div className="text-xs text-muted-foreground">Dashboard</div>
+                  </div>
+                  <ExternalLink className="h-3 w-3 ml-auto" />
+                </Link>
+                <Link 
+                  to={`/admin/reports?classId=${selectedClassDetails?.id}`}
+                  className="flex items-center gap-2 p-3 rounded-lg bg-background hover:bg-primary/10 transition-colors border"
+                >
+                  <BarChart3 className="h-4 w-4 text-orange-600" />
+                  <div>
+                    <div className="font-medium text-sm">Reports</div>
+                    <div className="text-xs text-muted-foreground">Analytics</div>
+                  </div>
+                  <ExternalLink className="h-3 w-3 ml-auto" />
+                </Link>
+              </div>
+            </div>
+
+            {/* Student Management Section */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Enrolled Students ({enrolledStudents.length}/{selectedClassDetails?.maxStudents})
+              </h3>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">
+                  {selectedClassDetails?.grade && `Grade ${selectedClassDetails.grade}`}
+                </Badge>
+                <Badge variant="secondary">
+                  {selectedClassDetails?.subject}
+                </Badge>
+              </div>
+            </div>
+
             {loadingDetails ? (
-              <div className="flex justify-center py-4">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+              <div className="flex justify-center py-8">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                  <p className="text-sm text-muted-foreground">Loading students...</p>
+                </div>
               </div>
             ) : enrolledStudents.length === 0 ? (
-              <p className="text-center text-muted-foreground py-4">No students enrolled yet.</p>
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                <p className="text-muted-foreground">No students enrolled yet</p>
+                <p className="text-sm text-muted-foreground">Use the Enrollments tab to add students to this class</p>
+              </div>
             ) : (
-              <div className="grid gap-2 max-h-[300px] overflow-y-auto">
-                {enrolledStudents.map((student) => (
-                  <div key={student.id} className="flex items-center justify-between p-3 border rounded bg-muted/20">
+              <div className="grid gap-3 max-h-[400px] overflow-y-auto">
+                {enrolledStudents.map((student, index) => (
+                  <div key={student.id} className="flex items-center justify-between p-4 border rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-xs">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
                         {student.displayName.substring(0, 2).toUpperCase()}
                       </div>
                       <div>
                         <div className="font-medium">{student.displayName}</div>
-                        <div className="text-xs text-muted-foreground">{student.userId}</div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-2">
+                          <span>ID: {student.userId}</span>
+                          <span>•</span>
+                          <span>{student.email}</span>
+                        </div>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => handleUnenroll(student.id)}
-                    >
-                      <UserMinus className="h-4 w-4 mr-1" />
-                      Unenroll
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        #{index + 1}
+                      </Badge>
+                      <Link 
+                        to={`/student?studentId=${student.userId}`}
+                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                      >
+                        View Dashboard
+                        <ExternalLink className="h-3 w-3" />
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleUnenroll(student.id)}
+                      >
+                        <UserMinus className="h-4 w-4 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button onClick={() => setViewDetailsOpen(false)}>Close</Button>
+            <Button variant="outline" onClick={() => setViewDetailsOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={() => {
+              setViewDetailsOpen(false);
+              // Switch to enrollments tab
+              const enrollmentsTab = document.querySelector('[value="enrollments"]') as HTMLElement;
+              enrollmentsTab?.click();
+            }}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Students
+            </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Schedule Dialog */}
+      <Dialog open={editScheduleOpen} onOpenChange={setEditScheduleOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Schedule: {selectedClassForSchedule?.name}</DialogTitle>
+            <DialogDescription>
+              Update class schedule and room information
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUpdateSchedule} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="scheduleRoom">Room</Label>
+                <Input
+                  id="scheduleRoom"
+                  placeholder="e.g., Room 101, Lab 201"
+                  value={scheduleFormData.room}
+                  onChange={(e) => setScheduleFormData(prev => ({ ...prev, room: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="customSchedule">Custom Schedule Text</Label>
+                <Input
+                  id="customSchedule"
+                  placeholder="e.g., Mon-Fri 9:00 AM - 10:00 AM"
+                  value={scheduleFormData.schedule}
+                  onChange={(e) => setScheduleFormData(prev => ({ ...prev, schedule: e.target.value }))}
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <Label>Or Build Schedule:</Label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="startTime">Start Time</Label>
+                    <Input
+                      id="startTime"
+                      type="time"
+                      value={scheduleFormData.startTime}
+                      onChange={(e) => setScheduleFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="endTime">End Time</Label>
+                    <Input
+                      id="endTime"
+                      type="time"
+                      value={scheduleFormData.endTime}
+                      onChange={(e) => setScheduleFormData(prev => ({ ...prev, endTime: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Days of Week</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+                      <div key={day} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={day}
+                          checked={scheduleFormData.days.includes(day)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setScheduleFormData(prev => ({
+                                ...prev,
+                                days: [...prev.days, day]
+                              }));
+                            } else {
+                              setScheduleFormData(prev => ({
+                                ...prev,
+                                days: prev.days.filter(d => d !== day)
+                              }));
+                            }
+                          }}
+                        />
+                        <Label htmlFor={day} className="text-sm font-normal">
+                          {day.substring(0, 3)}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="text-sm text-muted-foreground p-3 bg-muted/50 rounded">
+              <strong>Note:</strong> You can either enter a custom schedule text or build one using the time and days fields. 
+              The built schedule will override the custom text.
+            </div>
+            
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditScheduleOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={updatingSchedule}>
+                {updatingSchedule ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Clock className="h-4 w-4 mr-2" />
+                    Update Schedule
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </DashboardLayout>

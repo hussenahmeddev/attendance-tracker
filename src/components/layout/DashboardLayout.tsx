@@ -12,6 +12,7 @@ interface DashboardLayoutProps {
   role: UserRole;
   userName?: string;
   userEmail?: string;
+  userSection?: string;
   pageTitle?: string;
   pageDescription?: string;
 }
@@ -23,6 +24,7 @@ export function DashboardLayout({
   role,
   userName,
   userEmail,
+  userSection,
   pageTitle,
   pageDescription,
 }: DashboardLayoutProps) {
@@ -49,6 +51,7 @@ export function DashboardLayout({
   // Use auth context data as fallback
   const displayName = userName || userData?.displayName || "User";
   const email = userEmail || userData?.email || "";
+  const section = userSection || userData?.section || "";
 
   return (
     <div className="min-h-screen flex bg-slate-50">
@@ -57,6 +60,7 @@ export function DashboardLayout({
         role={role}
         userName={displayName}
         userEmail={email}
+        userSection={section}
         className={`${currentStyle.sidebar} text-white`}
       />
 

@@ -1,4 +1,4 @@
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, increment, getCountFromServer } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, increment, getCountFromServer, limit } from "firebase/firestore";
 import { db } from "./firebase";
 
 export interface Class {
@@ -6,6 +6,7 @@ export interface Class {
   name: string;
   subject: string;
   grade: string;
+  section?: string;
   teacher: string;
   teacherId: string;
   students: number;
@@ -22,6 +23,7 @@ export interface ClassFormData {
   subject: string;
   teacher: string;
   grade: string;
+  section: string;
   room: string;
   maxStudents: string;
 }
@@ -29,10 +31,11 @@ export interface ClassFormData {
 /**
  * Fetch all classes from Firestore
  */
-export const fetchAllClasses = async (): Promise<Class[]> => {
+export const fetchAllClasses = async (limitCount: number = 100): Promise<Class[]> => {
   try {
     const classesCollection = collection(db, 'classes');
-    const classesSnapshot = await getDocs(classesCollection);
+    const q = limitCount > 0 ? query(classesCollection, limit(limitCount)) : query(classesCollection);
+    const classesSnapshot = await getDocs(q);
     return classesSnapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -40,6 +43,7 @@ export const fetchAllClasses = async (): Promise<Class[]> => {
         name: data.name || 'Unnamed Class',
         subject: data.subject || 'General',
         grade: data.grade || 'All',
+        section: data.section || '',
         teacher: data.teacher || 'Unassigned',
         teacherId: data.teacherId || 'N/A',
         students: data.students || 0,
@@ -72,6 +76,7 @@ export const fetchTeacherClasses = async (teacherId: string): Promise<Class[]> =
         name: data.name || 'Unnamed Class',
         subject: data.subject || 'General',
         grade: data.grade || 'All',
+        section: data.section || '',
         teacher: data.teacher || 'Unassigned',
         teacherId: data.teacherId || 'N/A',
         students: data.students || 0,
@@ -374,6 +379,7 @@ export const getEnrolledClassesForStudent = async (studentUserId: string): Promi
           name: data.name || 'Unnamed Class',
           subject: data.subject || 'General',
           grade: data.grade || 'All',
+          section: data.section || '',
           teacher: data.teacher || 'Unassigned',
           teacherId: data.teacherId || 'N/A',
           students: data.students || 0,

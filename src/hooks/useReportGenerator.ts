@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { fetchAllAttendance, fetchStudentAttendance, fetchTeacherAttendance, getAttendanceStatistics, type AttendanceRecord } from '@/lib/attendanceUtils';
 
 export type ReportType = 'summary' | 'student' | 'class' | 'system';
@@ -70,6 +71,21 @@ export const useReportGenerator = () => {
         doc.save(`${title.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
+    const generateExcel = (data: any[], title: string) => {
+        if (data.length === 0) return;
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance Report');
+
+        // Add title and metadata
+        const titleRow = [title];
+        const metaRow = [`Generated on: ${new Date().toLocaleDateString()}`];
+        
+        XLSX.utils.sheet_add_aoa(worksheet, [titleRow, metaRow, []], { origin: 'A1' });
+        
+        XLSX.writeFile(workbook, `${title.replace(/\s+/g, '_').toLowerCase()}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
     const generateCSV = (data: any[], title: string) => {
         if (data.length === 0) return;
 
@@ -179,6 +195,8 @@ export const useReportGenerator = () => {
             // Generate File
             if (format === 'pdf') {
                 generatePDF(data, title, columns, rows);
+            } else if (format === 'excel') {
+                generateExcel(data, title);
             } else if (format === 'csv') {
                 generateCSV(data, title);
             } else if (format === 'json') {

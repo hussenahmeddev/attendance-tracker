@@ -21,11 +21,13 @@ import TeacherStudents from "./pages/teacher/Students";
 import TeacherReports from "./pages/teacher/Reports";
 import TeacherSchedule from "./pages/teacher/Schedule";
 import TeacherLeaves from "./pages/teacher/Leaves";
+import TeacherSettings from "./pages/teacher/Settings";
 import StudentDashboard from "./pages/student/StudentDashboard";
 import StudentAttendance from "./pages/student/Attendance";
 import StudentLeaveRequest from "./pages/student/LeaveRequest";
 import StudentSchedule from "./pages/student/Schedule";
 import StudentNotifications from "./pages/student/Notifications";
+import StudentSettings from "./pages/student/Settings";
 import NotFound from "./pages/NotFound";
 import { InstallPrompt } from "./components/InstallPrompt";
 
@@ -167,6 +169,14 @@ const App = () => {
               }
             />
             <Route
+              path="/teacher/settings"
+              element={
+                <ProtectedRoute requiredRole="teacher">
+                  <TeacherSettings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/student"
               element={
                 <ProtectedRoute requiredRole="student">
@@ -203,6 +213,14 @@ const App = () => {
               element={
                 <ProtectedRoute requiredRole="student">
                   <StudentNotifications />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/student/settings"
+              element={
+                <ProtectedRoute requiredRole="student">
+                  <StudentSettings />
                 </ProtectedRoute>
               }
             />

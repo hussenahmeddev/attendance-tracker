@@ -63,6 +63,31 @@ export interface StudentAttendanceSummary {
 }
 
 /**
+ * Check if attendance session is locked for a specific class and date
+ */
+export const checkAttendanceSessionLocked = async (
+  classId: string,
+  date: string
+): Promise<boolean> => {
+  try {
+    // Check if there's a completed attendance session for this class and date
+    const q = query(
+      collection(db, 'attendanceSessions'),
+      where('classId', '==', classId),
+      where('date', '==', date),
+      where('status', '==', 'completed')
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.length > 0;
+  } catch (error) {
+    console.error('Error checking attendance session lock:', error);
+    // If we can't check, assume it's not locked to allow functionality
+    return false;
+  }
+};
+
+/**
  * Check if attendance already exists for a student on a specific date and class
  */
 export const checkExistingAttendance = async (
@@ -123,7 +148,7 @@ export const checkExistingAttendance = async (
 /**
  * Save or update attendance record
  */
-export const saveAttendanceRecord = async (attendanceData: Omit<AttendanceRecord, 'id'>): Promise<string> => {
+export const saveAttendanceRecord = async (attendanceData: Omit<AttendanceRecord, 'id'> & { autoSaved?: boolean }): Promise<string> => {
   // If offline, bypass existence check and save to local queue
   if (typeof window !== 'undefined' && !navigator.onLine) {
     try {
@@ -480,12 +505,14 @@ export const fetchTeacherAttendance = async (
  */
 export const fetchAllAttendance = async (
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  limitCount: number = 500
 ): Promise<AttendanceRecord[]> => {
   try {
-    // Fetch all records, no orderBy at query level to be safe
+    // Fetch records with limit to prevent excessive data transfer
     const attendanceCollection = collection(db, 'attendance');
-    const snapshot = await getDocs(attendanceCollection);
+    const q = query(attendanceCollection, orderBy('markedAt', 'desc'), limit(limitCount));
+    const snapshot = await getDocs(q);
 
     let records = snapshot.docs.map(doc => ({
       id: doc.id,
@@ -660,7 +687,7 @@ export const getAttendanceCalendarData = async (
 };
 
 /**
- * Get attendance trends for chart visualization
+ * Get attendance trends for chart visualization (optimized)
  */
 export const getAttendanceTrends = async (
   days: number = 7,
@@ -676,7 +703,35 @@ export const getAttendanceTrends = async (
   try {
     const trends = [];
     const today = new Date();
+    
+    // Calculate date range
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - (days - 1));
+    const startDateStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
+    const endDateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
+    // Fetch all records in date range at once instead of individual queries
+    let records: AttendanceRecord[] = [];
+    if (teacherId) {
+      records = await fetchTeacherAttendance(teacherId, startDateStr, endDateStr);
+    } else {
+      records = await fetchAllAttendance(startDateStr, endDateStr, 1000); // Limit for performance
+    }
+
+    if (classId) {
+      records = records.filter(r => r.classId === classId);
+    }
+
+    // Group records by date
+    const recordsByDate = new Map<string, AttendanceRecord[]>();
+    records.forEach(record => {
+      if (!recordsByDate.has(record.date)) {
+        recordsByDate.set(record.date, []);
+      }
+      recordsByDate.get(record.date)!.push(record);
+    });
+
+    // Generate trends for each day
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
@@ -685,19 +740,14 @@ export const getAttendanceTrends = async (
       const day = String(date.getDate()).padStart(2, '0');
       const dateString = `${year}-${month}-${day}`;
 
-      const records = await fetchAttendanceByDateAndClass(dateString, classId);
-
-      let filteredRecords = records;
-      if (teacherId) {
-        filteredRecords = records.filter(r => r.teacherId === teacherId);
-      }
+      const dayRecords = recordsByDate.get(dateString) || [];
 
       trends.push({
         date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        present: filteredRecords.filter(r => r.status === 'present').length,
-        absent: filteredRecords.filter(r => r.status === 'absent').length,
-        late: filteredRecords.filter(r => r.status === 'late').length,
-        excused: filteredRecords.filter(r => r.status === 'excused').length,
+        present: dayRecords.filter(r => r.status === 'present').length,
+        absent: dayRecords.filter(r => r.status === 'absent').length,
+        late: dayRecords.filter(r => r.status === 'late').length,
+        excused: dayRecords.filter(r => r.status === 'excused').length,
       });
     }
 
@@ -705,5 +755,42 @@ export const getAttendanceTrends = async (
   } catch (error) {
     console.error('Error getting attendance trends:', error);
     throw error;
+  }
+};
+
+/**
+ * Broadcast attendance update for real-time visibility
+ * This creates a simple notification system for instant visibility
+ */
+export const broadcastAttendanceUpdate = async (
+  classId: string,
+  className: string,
+  date: string,
+  teacherName: string,
+  updateType: 'auto-save' | 'submission' | 'completion'
+): Promise<void> => {
+  try {
+    const broadcastData = {
+      type: 'attendance_update',
+      classId,
+      className,
+      date,
+      teacherName,
+      updateType,
+      timestamp: new Date().toISOString(),
+      message: updateType === 'completion' 
+        ? `Attendance submitted for ${className} on ${date}`
+        : updateType === 'submission'
+        ? `Attendance being submitted for ${className}`
+        : `Attendance auto-saved for ${className}`
+    };
+
+    // Store in a broadcasts collection for real-time updates
+    await addDoc(collection(db, 'attendanceBroadcasts'), broadcastData);
+    
+    console.log(`📡 Broadcasted: ${broadcastData.message}`);
+  } catch (error) {
+    console.error('Error broadcasting attendance update:', error);
+    // Don't throw - broadcasting is optional
   }
 };

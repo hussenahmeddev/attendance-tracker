@@ -5,15 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, Clock, Users, Eye, Edit, Plus } from "lucide-react";
+import { BookOpen, Clock, Users, Eye, Edit, Calendar } from "lucide-react";
 import { useState, useEffect } from "react";
-import { collection, getDocs, addDoc } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchTeacherClasses, getClassStats, type Class, updateClass } from "@/lib/classUtils";
-import { DEFAULT_VALUES } from "@/config/constants";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -35,22 +34,12 @@ export default function TeacherClasses() {
   const [loading, setLoading] = useState(true);
 
   // Dialog States
-  const [isRequestClassOpen, setIsRequestClassOpen] = useState(false);
   const [isViewDetailsOpen, setIsViewDetailsOpen] = useState(false);
   const [isEditClassOpen, setIsEditClassOpen] = useState(false);
 
   const [selectedClass, setSelectedClass] = useState<Class | null>(null);
 
-  const [requesting, setRequesting] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const [requestData, setRequestData] = useState({
-    name: '',
-    subject: '',
-    grade: '',
-    room: '',
-    maxStudents: ''
-  });
 
   const [editData, setEditData] = useState({
     name: '',
@@ -96,63 +85,6 @@ export default function TeacherClasses() {
 
     fetchData();
   }, [userData]);
-
-  const handleRequestClass = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!requestData.name || !requestData.subject) {
-      alert('Please fill in required fields (Name and Subject)');
-      return;
-    }
-
-    if (!userData) {
-      alert('User not authenticated. Please log in again.');
-      return;
-    }
-
-    if (!userData.userId) {
-      alert('User ID not found. Please log in again.');
-      return;
-    }
-
-    setRequesting(true);
-    try {
-      const classRequest = {
-        name: requestData.name,
-        subject: requestData.subject,
-        grade: requestData.grade || 'All',
-        teacher: userData.displayName || 'Unknown',
-        teacherId: userData.userId,
-        room: requestData.room || 'TBD',
-        maxStudents: parseInt(requestData.maxStudents) || DEFAULT_VALUES.MAX_STUDENTS_PER_CLASS,
-        students: DEFAULT_VALUES.STUDENT_COUNT,
-        schedule: "To be scheduled",
-        status: 'pending' as const,
-        requestedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString()
-      };
-
-      // Add to Firestore
-      const docRef = await addDoc(collection(db, 'classes'), classRequest);
-
-      // Add to local state
-      const localClass = {
-        id: docRef.id,
-        ...classRequest
-      };
-
-      setClasses(prev => [localClass, ...prev]);
-      setRequestData({ name: '', subject: '', grade: '', room: '', maxStudents: '' });
-      setIsRequestClassOpen(false);
-      alert('Class request submitted successfully! Waiting for admin approval.');
-
-    } catch (error) {
-      console.error('Error requesting class:', error);
-      alert(`Failed to submit class request: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setRequesting(false);
-    }
-  };
 
   const handleViewDetails = (cls: Class) => {
     setSelectedClass(cls);
@@ -206,6 +138,15 @@ export default function TeacherClasses() {
     }
   };
 
+  // Enhanced Schedule Management Functions
+  const handleViewCalendar = (cls: Class) => {
+    // Show class schedule information in a toast notification
+    toast.info(`Schedule for ${cls.name}`, {
+      description: `${cls.schedule} | Room: ${cls.room}`,
+      duration: 4000
+    });
+  };
+
   const students = users.filter(u => u.role === 'student');
   const stats = getClassStats(classes);
 
@@ -239,91 +180,10 @@ export default function TeacherClasses() {
         ) : (
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle className="flex items-center gap-2">
-                  <BookOpen className="h-5 w-5" />
-                  My Assigned Classes ({classes.length})
-                </CardTitle>
-                <Dialog open={isRequestClassOpen} onOpenChange={setIsRequestClassOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Request New Class
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Request New Class</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleRequestClass} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="requestClassName">Class Name *</Label>
-                        <Input
-                          id="requestClassName"
-                          placeholder="e.g., Advanced Physics Grade 12"
-                          value={requestData.name}
-                          onChange={(e) => setRequestData(prev => ({ ...prev, name: e.target.value }))}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="requestSubject">Subject *</Label>
-                        <Input
-                          id="requestSubject"
-                          placeholder="e.g., Physics"
-                          value={requestData.subject}
-                          onChange={(e) => setRequestData(prev => ({ ...prev, subject: e.target.value }))}
-                          required
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="requestGrade">Grade</Label>
-                          <Select value={requestData.grade} onValueChange={(value) => setRequestData(prev => ({ ...prev, grade: value }))}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Grade" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="9">Grade 9</SelectItem>
-                              <SelectItem value="10">Grade 10</SelectItem>
-                              <SelectItem value="11">Grade 11</SelectItem>
-                              <SelectItem value="12">Grade 12</SelectItem>
-                              <SelectItem value="All">All Grades</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="requestRoom">Preferred Room</Label>
-                          <Input
-                            id="requestRoom"
-                            placeholder="Room 101"
-                            value={requestData.room}
-                            onChange={(e) => setRequestData(prev => ({ ...prev, room: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="requestMaxStudents">Max Students</Label>
-                        <Input
-                          id="requestMaxStudents"
-                          type="number"
-                          placeholder="30"
-                          value={requestData.maxStudents}
-                          onChange={(e) => setRequestData(prev => ({ ...prev, maxStudents: e.target.value }))}
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button type="submit" className="flex-1" disabled={requesting || !userData}>
-                          {requesting ? 'Submitting...' : 'Submit Request'}
-                        </Button>
-                        <Button type="button" variant="outline" onClick={() => setIsRequestClassOpen(false)}>
-                          Cancel
-                        </Button>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-              </div>
+              <CardTitle className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5" />
+                My Assigned Classes ({classes.length})
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -411,7 +271,16 @@ export default function TeacherClasses() {
                               <Button
                                 size="sm"
                                 variant="outline"
+                                onClick={() => handleViewCalendar(cls)}
+                                title="View Schedule"
+                              >
+                                <Calendar className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
                                 onClick={() => handleEditClick(cls)}
+                                title="Edit Class"
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>

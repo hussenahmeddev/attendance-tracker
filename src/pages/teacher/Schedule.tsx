@@ -10,6 +10,7 @@ import { fetchTeacherClasses, type Class } from "@/lib/classUtils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { updateClass } from "@/lib/classUtils";
 import { toast } from "sonner";
 
@@ -21,14 +22,20 @@ export default function TeacherSchedule() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editFormData, setEditFormData] = useState({
     schedule: '',
-    room: ''
+    room: '',
+    startTime: '',
+    endTime: '',
+    days: [] as string[]
   });
   const [saving, setSaving] = useState(false);
   const [isAddScheduleDialogOpen, setIsAddScheduleDialogOpen] = useState(false);
   const [addScheduleData, setAddScheduleData] = useState({
     classId: '',
     schedule: '',
-    room: ''
+    room: '',
+    startTime: '',
+    endTime: '',
+    days: [] as string[]
   });
 
   // Fetch teacher's classes
@@ -55,7 +62,10 @@ export default function TeacherSchedule() {
     setSelectedClass(cls);
     setEditFormData({
       schedule: cls.schedule || '',
-      room: cls.room || ''
+      room: cls.room || '',
+      startTime: '',
+      endTime: '',
+      days: []
     });
     setIsEditDialogOpen(true);
   };
@@ -66,15 +76,21 @@ export default function TeacherSchedule() {
 
     try {
       setSaving(true);
+      
+      // Generate schedule text from structured inputs if provided
+      const scheduleText = editFormData.days.length > 0 && editFormData.startTime && editFormData.endTime
+        ? `${editFormData.days.join(', ')} ${editFormData.startTime} - ${editFormData.endTime}`
+        : editFormData.schedule || 'To be scheduled';
+
       await updateClass(selectedClass.id, {
-        schedule: editFormData.schedule,
+        schedule: scheduleText,
         room: editFormData.room
       });
 
       // Update local state
       setClasses(prev => prev.map(c =>
         c.id === selectedClass.id
-          ? { ...c, schedule: editFormData.schedule, room: editFormData.room }
+          ? { ...c, schedule: scheduleText, room: editFormData.room }
           : c
       ));
 
@@ -97,21 +113,27 @@ export default function TeacherSchedule() {
 
     try {
       setSaving(true);
+      
+      // Generate schedule text from structured inputs if provided
+      const scheduleText = addScheduleData.days.length > 0 && addScheduleData.startTime && addScheduleData.endTime
+        ? `${addScheduleData.days.join(', ')} ${addScheduleData.startTime} - ${addScheduleData.endTime}`
+        : addScheduleData.schedule || 'To be scheduled';
+
       await updateClass(addScheduleData.classId, {
-        schedule: addScheduleData.schedule,
+        schedule: scheduleText,
         room: addScheduleData.room
       });
 
       // Update local state
       setClasses(prev => prev.map(c =>
         c.id === addScheduleData.classId
-          ? { ...c, schedule: addScheduleData.schedule, room: addScheduleData.room }
+          ? { ...c, schedule: scheduleText, room: addScheduleData.room }
           : c
       ));
 
       toast.success("Schedule added successfully");
       setIsAddScheduleDialogOpen(false);
-      setAddScheduleData({ classId: '', schedule: '', room: '' });
+      setAddScheduleData({ classId: '', schedule: '', room: '', startTime: '', endTime: '', days: [] });
     } catch (error) {
       console.error('Error adding schedule:', error);
       toast.error("Failed to add schedule");
@@ -265,110 +287,250 @@ export default function TeacherSchedule() {
       </div>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Class Schedule</DialogTitle>
             <DialogDescription>
               Update schedule and room information for {selectedClass?.name}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSaveEdit}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="schedule" className="text-right">
-                  Schedule
-                </Label>
+          <form onSubmit={handleSaveEdit} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="editRoom">Room</Label>
                 <Input
-                  id="schedule"
-                  value={editFormData.schedule}
-                  onChange={(e) => setEditFormData(prev => ({ ...prev, schedule: e.target.value }))}
-                  className="col-span-3"
-                  placeholder="e.g. Mon/Wed 10:00 AM"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="room" className="text-right">
-                  Room
-                </Label>
-                <Input
-                  id="room"
+                  id="editRoom"
+                  placeholder="e.g., Room 101, Lab 201"
                   value={editFormData.room}
                   onChange={(e) => setEditFormData(prev => ({ ...prev, room: e.target.value }))}
-                  className="col-span-3"
-                  placeholder="e.g. Room 101"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editCustomSchedule">Custom Schedule Text</Label>
+                <Input
+                  id="editCustomSchedule"
+                  placeholder="e.g., Mon-Fri 9:00 AM - 10:00 AM"
+                  value={editFormData.schedule}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, schedule: e.target.value }))}
                 />
               </div>
             </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <Label>Or Build Schedule:</Label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="editStartTime">Start Time</Label>
+                    <Input
+                      id="editStartTime"
+                      type="time"
+                      value={editFormData.startTime}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editEndTime">End Time</Label>
+                    <Input
+                      id="editEndTime"
+                      type="time"
+                      value={editFormData.endTime}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, endTime: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Days of Week</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+                      <div key={day} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`edit-${day}`}
+                          checked={editFormData.days.includes(day)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setEditFormData(prev => ({
+                                ...prev,
+                                days: [...prev.days, day]
+                              }));
+                            } else {
+                              setEditFormData(prev => ({
+                                ...prev,
+                                days: prev.days.filter(d => d !== day)
+                              }));
+                            }
+                          }}
+                        />
+                        <Label htmlFor={`edit-${day}`} className="text-sm font-normal">
+                          {day.substring(0, 3)}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="text-sm text-muted-foreground p-3 bg-muted/50 rounded">
+              <strong>Note:</strong> You can either enter a custom schedule text or build one using the time and days fields. 
+              The built schedule will override the custom text.
+            </div>
+            
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? "Saving..." : "Save Changes"}
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Clock className="h-4 w-4 mr-2" />
+                    Save Changes
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
       <Dialog open={isAddScheduleDialogOpen} onOpenChange={setIsAddScheduleDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add Class Schedule</DialogTitle>
             <DialogDescription>
               Assign a schedule and room to one of your classes
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleAddSchedule}>
-            <div className="grid gap-4 py-4">
+          <form onSubmit={handleAddSchedule} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="class-select">Select Class</Label>
+              <select
+                id="class-select"
+                className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
+                value={addScheduleData.classId}
+                onChange={(e) => {
+                  const cls = classes.find(c => c.id === e.target.value);
+                  setAddScheduleData({
+                    classId: e.target.value,
+                    schedule: cls?.schedule || '',
+                    room: cls?.room || '',
+                    startTime: '',
+                    endTime: '',
+                    days: []
+                  });
+                }}
+                required
+              >
+                <option value="">Choose a class...</option>
+                {classes.map(cls => (
+                  <option key={cls.id} value={cls.id}>{cls.name}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="class-select">Select Class</Label>
-                <select
-                  id="class-select"
-                  className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
-                  value={addScheduleData.classId}
-                  onChange={(e) => {
-                    const cls = classes.find(c => c.id === e.target.value);
-                    setAddScheduleData({
-                      classId: e.target.value,
-                      schedule: cls?.schedule || '',
-                      room: cls?.room || ''
-                    });
-                  }}
-                  required
-                >
-                  <option value="">Choose a class...</option>
-                  {classes.map(cls => (
-                    <option key={cls.id} value={cls.id}>{cls.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="add-schedule">Schedule</Label>
+                <Label htmlFor="addRoom">Room</Label>
                 <Input
-                  id="add-schedule"
-                  value={addScheduleData.schedule}
-                  onChange={(e) => setAddScheduleData(prev => ({ ...prev, schedule: e.target.value }))}
-                  placeholder="e.g. Mon/Wed 10:00 AM"
-                  required
+                  id="addRoom"
+                  placeholder="e.g., Room 101, Lab 201"
+                  value={addScheduleData.room}
+                  onChange={(e) => setAddScheduleData(prev => ({ ...prev, room: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="add-room">Room</Label>
+                <Label htmlFor="addCustomSchedule">Custom Schedule Text</Label>
                 <Input
-                  id="add-room"
-                  value={addScheduleData.room}
-                  onChange={(e) => setAddScheduleData(prev => ({ ...prev, room: e.target.value }))}
-                  placeholder="e.g. Room 101"
-                  required
+                  id="addCustomSchedule"
+                  placeholder="e.g., Mon-Fri 9:00 AM - 10:00 AM"
+                  value={addScheduleData.schedule}
+                  onChange={(e) => setAddScheduleData(prev => ({ ...prev, schedule: e.target.value }))}
                 />
               </div>
             </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <Label>Or Build Schedule:</Label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="addStartTime">Start Time</Label>
+                    <Input
+                      id="addStartTime"
+                      type="time"
+                      value={addScheduleData.startTime}
+                      onChange={(e) => setAddScheduleData(prev => ({ ...prev, startTime: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="addEndTime">End Time</Label>
+                    <Input
+                      id="addEndTime"
+                      type="time"
+                      value={addScheduleData.endTime}
+                      onChange={(e) => setAddScheduleData(prev => ({ ...prev, endTime: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Days of Week</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+                      <div key={day} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`add-${day}`}
+                          checked={addScheduleData.days.includes(day)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setAddScheduleData(prev => ({
+                                ...prev,
+                                days: [...prev.days, day]
+                              }));
+                            } else {
+                              setAddScheduleData(prev => ({
+                                ...prev,
+                                days: prev.days.filter(d => d !== day)
+                              }));
+                            }
+                          }}
+                        />
+                        <Label htmlFor={`add-${day}`} className="text-sm font-normal">
+                          {day.substring(0, 3)}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="text-sm text-muted-foreground p-3 bg-muted/50 rounded">
+              <strong>Note:</strong> You can either enter a custom schedule text or build one using the time and days fields. 
+              The built schedule will override the custom text.
+            </div>
+            
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsAddScheduleDialogOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? "Adding..." : "Add Schedule"}
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Schedule
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </form>

@@ -1,5 +1,5 @@
 import { ATTENDANCE_THRESHOLDS } from "@/config/constants";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { UserProfile } from "@/components/UserProfile";
@@ -12,170 +12,153 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Bell, Shield, Database, Users, Clock, Mail, Globe } from "lucide-react";
-
-interface SystemSetting {
-  id: string;
-  name: string;
-  description: string;
-  value: string | boolean;
-  type: 'text' | 'boolean' | 'select' | 'number';
-  options?: string[];
-}
-
-const generalSettings: SystemSetting[] = [
-  {
-    id: 'school_name',
-    name: 'School Name',
-    description: 'The name of your educational institution',
-    value: 'Springfield High School',
-    type: 'text'
-  },
-  {
-    id: 'academic_year',
-    name: 'Academic Year',
-    description: 'Current academic year',
-    value: '2024-2025',
-    type: 'text'
-  },
-  {
-    id: 'timezone',
-    name: 'Timezone',
-    description: 'System timezone for attendance tracking',
-    value: 'GMT+03:00 East African Time',
-    type: 'select',
-    options: [
-      'GMT+03:00 East African Time',
-      'UTC+05:30',
-      'UTC+00:00',
-      'UTC-05:00',
-      'UTC+08:00'
-    ]
-  },
-  {
-    id: 'language',
-    name: 'Default Language',
-    description: 'System default language',
-    value: 'English',
-    type: 'select',
-    options: ['English', 'Spanish', 'French', 'German']
-  }
-];
-
-const attendanceSettings: SystemSetting[] = [
-  {
-    id: 'auto_mark_absent',
-    name: 'Auto Mark Absent',
-    description: 'Automatically mark students as absent if not marked within time limit',
-    value: true,
-    type: 'boolean'
-  },
-  {
-    id: 'attendance_window',
-    name: 'Attendance Window (minutes)',
-    description: 'Time window for marking attendance after class starts',
-    value: '15',
-    type: 'number'
-  },
-  {
-    id: 'late_threshold',
-    name: 'Late Threshold (minutes)',
-    description: 'Minutes after which a student is marked as late',
-    value: '10',
-    type: 'number'
-  },
-  {
-    id: 'require_reason',
-    name: 'Require Absence Reason',
-    description: 'Require teachers to provide reason for marking absent',
-    value: false,
-    type: 'boolean'
-  }
-];
-
-const notificationSettings: SystemSetting[] = [
-  {
-    id: 'email_notifications',
-    name: 'Email Notifications',
-    description: 'Send email notifications for important events',
-    value: true,
-    type: 'boolean'
-  },
-  {
-    id: 'parent_notifications',
-    name: 'Parent Notifications',
-    description: 'Send notifications to parents about attendance',
-    value: true,
-    type: 'boolean'
-  },
-  {
-    id: 'low_attendance_alert',
-    name: 'Low Attendance Alerts',
-    description: 'Alert when student attendance falls below threshold',
-    value: true,
-    type: 'boolean'
-  },
-  {
-    id: 'attendance_threshold',
-    name: 'Attendance Threshold (%)',
-    description: 'Minimum attendance percentage before alert',
-    value: ATTENDANCE_THRESHOLDS.SATISFACTORY.toString(),
-    type: 'number'
-  }
-];
+import { Separator } from "@/components/ui/separator";
+import { Settings, Bell, Shield, Database, Users, Clock, Mail, Globe, User, Lock, Eye, EyeOff, Check, AlertTriangle, Save, RefreshCw } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { updatePassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { fetchSystemSettings, updateSystemSettings, SystemSettings, defaultSettings } from "@/lib/settingsUtils";
 
 export default function AdminSettings() {
-  const [settings, setSettings] = useState({
-    general: generalSettings,
-    attendance: attendanceSettings,
-    notifications: notificationSettings
-  });
+  const { userData } = useAuth();
+  
+  // System settings state
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(defaultSettings);
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
 
-  const handleSettingChange = (category: string, settingId: string, value: string | boolean) => {
-    setSettings(prev => ({
+  // Personal settings state
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  // Load system settings on component mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settings = await fetchSystemSettings();
+        setSystemSettings(settings);
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        toast.error('Failed to load system settings');
+      } finally {
+        setLoadingSettings(false);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  const handleSystemSettingChange = (category: keyof SystemSettings, field: string, value: string | boolean) => {
+    setSystemSettings(prev => ({
       ...prev,
-      [category]: prev[category as keyof typeof prev].map(setting =>
-        setting.id === settingId ? { ...setting, value } : setting
-      )
+      [category]: {
+        ...prev[category],
+        [field]: value
+      }
     }));
   };
 
-  const handleSave = () => {
-    toast.success("Settings saved successfully!", {
-      description: "System configuration has been updated.",
-    });
-    console.log("Saving settings:", settings);
+  const handleSave = async () => {
+    setSavingSettings(true);
+    try {
+      await updateSystemSettings(systemSettings);
+      toast.success("Settings saved successfully!", {
+        description: "System configuration has been updated.",
+      });
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error("Failed to save settings. Please try again.");
+    } finally {
+      setSavingSettings(false);
+    }
   };
 
-  const handleReset = () => {
-    setSettings({
-      general: generalSettings,
-      attendance: attendanceSettings,
-      notifications: notificationSettings
-    });
-    toast.info("Settings reset to defaults.");
+  const handleReset = async () => {
+    try {
+      setSystemSettings(defaultSettings);
+      await updateSystemSettings(defaultSettings);
+      toast.info("Settings reset to defaults.");
+    } catch (error) {
+      console.error('Error resetting settings:', error);
+      toast.error("Failed to reset settings. Please try again.");
+    }
   };
 
-  const renderSettingInput = (setting: SystemSetting, category: string) => {
-    switch (setting.type) {
+  // Password change functionality
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      toast.error('Please fill in all password fields');
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      toast.error('New password must be at least 6 characters long');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        await updatePassword(user, passwordData.newPassword);
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        toast.success('Password updated successfully!');
+      }
+    } catch (error: any) {
+      console.error('Error updating password:', error);
+      if (error.code === 'auth/requires-recent-login') {
+        toast.error('Please log out and log back in before changing your password');
+      } else {
+        toast.error('Failed to update password. Please try again.');
+      }
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const togglePasswordVisibility = (field: 'current' | 'new' | 'confirm') => {
+    setShowPasswords(prev => ({
+      ...prev,
+      [field]: !prev[field]
+    }));
+  };
+
+  const renderSystemSettingInput = (category: keyof SystemSettings, field: string, value: string | boolean, type: 'text' | 'boolean' | 'select', options?: string[]) => {
+    switch (type) {
       case 'boolean':
         return (
           <Switch
-            checked={setting.value as boolean}
-            onCheckedChange={(checked) => handleSettingChange(category, setting.id, checked)}
+            checked={value as boolean}
+            onCheckedChange={(checked) => handleSystemSettingChange(category, field, checked)}
           />
         );
       case 'select':
         return (
           <Select
-            value={setting.value as string}
-            onValueChange={(value) => handleSettingChange(category, setting.id, value)}
+            value={value as string}
+            onValueChange={(newValue) => handleSystemSettingChange(category, field, newValue)}
           >
             <SelectTrigger className="w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {setting.options?.map((option) => (
+              {options?.map((option) => (
                 <SelectItem key={option} value={option}>
                   {option}
                 </SelectItem>
@@ -183,18 +166,16 @@ export default function AdminSettings() {
             </SelectContent>
           </Select>
         );
-      case 'number':
       case 'text':
+      default:
         return (
           <Input
-            type={setting.type}
-            value={setting.value as string}
-            onChange={(e) => handleSettingChange(category, setting.id, e.target.value)}
+            type="text"
+            value={value as string}
+            onChange={(e) => handleSystemSettingChange(category, field, e.target.value)}
             className="w-48"
           />
         );
-      default:
-        return null;
     }
   };
 
@@ -213,15 +194,316 @@ export default function AdminSettings() {
           <p className="text-muted-foreground">Manage system configuration and preferences</p>
         </div>
 
-        <Tabs defaultValue="general" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+        <Tabs defaultValue="profile" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-9">
+            <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="preferences">Preferences</TabsTrigger>
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="attendance">Attendance</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="system-security">System Security</TabsTrigger>
             <TabsTrigger value="backup">Backup</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
           </TabsList>
+
+          {/* Profile Tab */}
+          <TabsContent value="profile" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Profile Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Full Name</Label>
+                    <Input value={userData?.displayName || ''} disabled />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email Address</Label>
+                    <Input value={userData?.email || ''} disabled />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Admin ID</Label>
+                    <Input value={userData?.userId || ''} disabled />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Role</Label>
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-red-50 text-red-700 border-red-200">
+                        ADMINISTRATOR
+                      </Badge>
+                    </div>
+                  </div>
+                  {userData?.section && (
+                    <div className="space-y-2">
+                      <Label>Section</Label>
+                      <Input value={userData.section} disabled />
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label>Account Status</Label>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={userData?.status === 'active' ? 'default' : 'secondary'}>
+                        {userData?.status?.toUpperCase() || 'ACTIVE'}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+                
+                <Separator />
+                
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>As an administrator, you can update your profile information through the system</span>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Security Tab */}
+          <TabsContent value="security" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Lock className="h-5 w-5" />
+                  Change Password
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handlePasswordChange} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPassword">Current Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="currentPassword"
+                        type={showPasswords.current ? "text" : "password"}
+                        value={passwordData.currentPassword}
+                        onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
+                        placeholder="Enter your current password"
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => togglePasswordVisibility('current')}
+                      >
+                        {showPasswords.current ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="newPassword">New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="newPassword"
+                        type={showPasswords.new ? "text" : "password"}
+                        value={passwordData.newPassword}
+                        onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+                        placeholder="Enter your new password"
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => togglePasswordVisibility('new')}
+                      >
+                        {showPasswords.new ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        type={showPasswords.confirm ? "text" : "password"}
+                        value={passwordData.confirmPassword}
+                        onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                        placeholder="Confirm your new password"
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => togglePasswordVisibility('confirm')}
+                      >
+                        {showPasswords.confirm ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-4">
+                    <Button type="submit" disabled={changingPassword}>
+                      {changingPassword ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Updating...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-4 w-4 mr-2" />
+                          Update Password
+                        </>
+                      )}
+                    </Button>
+                    <Button 
+                      type="button" 
+                      variant="outline"
+                      onClick={() => setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+
+                <Separator className="my-6" />
+
+                <div className="space-y-3">
+                  <h3 className="font-semibold">Password Requirements</h3>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>• At least 6 characters long</li>
+                    <li>• Should contain a mix of letters and numbers</li>
+                    <li>• Avoid using personal information</li>
+                    <li>• Use a unique password not used elsewhere</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Account Security
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <h4 className="font-medium">Two-Factor Authentication</h4>
+                      <p className="text-sm text-muted-foreground">Add an extra layer of security to your admin account</p>
+                    </div>
+                    <Badge variant="secondary">Coming Soon</Badge>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <h4 className="font-medium">Login History</h4>
+                      <p className="text-sm text-muted-foreground">View your recent admin login activity</p>
+                    </div>
+                    <Button variant="outline" size="sm" disabled>
+                      View History
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Preferences Tab */}
+          <TabsContent value="preferences" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bell className="h-5 w-5" />
+                  Personal Notification Preferences
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Admin Email Notifications</h4>
+                      <p className="text-sm text-muted-foreground">Receive system alerts and important updates</p>
+                    </div>
+                    <Badge variant="secondary">Coming Soon</Badge>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">System Health Alerts</h4>
+                      <p className="text-sm text-muted-foreground">Get notified about system issues and maintenance</p>
+                    </div>
+                    <Badge variant="secondary">Coming Soon</Badge>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">User Activity Alerts</h4>
+                      <p className="text-sm text-muted-foreground">Notifications about suspicious user activities</p>
+                    </div>
+                    <Badge variant="secondary">Coming Soon</Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Display Preferences</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Admin Theme</h4>
+                      <p className="text-sm text-muted-foreground">Choose your preferred admin interface theme</p>
+                    </div>
+                    <Badge variant="secondary">Coming Soon</Badge>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Dashboard Layout</h4>
+                      <p className="text-sm text-muted-foreground">Customize your dashboard layout and widgets</p>
+                    </div>
+                    <Badge variant="secondary">Coming Soon</Badge>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Language</h4>
+                      <p className="text-sm text-muted-foreground">Select your preferred language</p>
+                    </div>
+                    <Badge variant="secondary">English</Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* General Settings */}
           <TabsContent value="general">
@@ -236,17 +518,80 @@ export default function AdminSettings() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {settings.general.map((setting) => (
-                  <div key={setting.id} className="flex items-center justify-between py-4 border-b last:border-b-0">
-                    <div className="flex-1">
-                      <Label className="text-base font-medium">{setting.name}</Label>
-                      <p className="text-sm text-muted-foreground mt-1">{setting.description}</p>
-                    </div>
-                    <div className="ml-4">
-                      {renderSettingInput(setting, 'general')}
-                    </div>
+                {loadingSettings ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="h-6 w-6 animate-spin mr-2" />
+                    <span>Loading settings...</span>
                   </div>
-                ))}
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between py-4 border-b">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">School Name</Label>
+                        <p className="text-sm text-muted-foreground mt-1">The name of your educational institution</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('general', 'school_name', systemSettings.general.school_name, 'text')}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-4 border-b">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Academic Year</Label>
+                        <p className="text-sm text-muted-foreground mt-1">Current academic year period</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('general', 'academic_year', systemSettings.general.academic_year, 'text')}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-4 border-b">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Timezone</Label>
+                        <p className="text-sm text-muted-foreground mt-1">System timezone for attendance tracking</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('general', 'timezone', systemSettings.general.timezone, 'select', [
+                          'GMT+00:00 Greenwich Mean Time',
+                          'GMT+01:00 Central European Time',
+                          'GMT+02:00 Eastern European Time',
+                          'GMT+03:00 East African Time',
+                          'GMT+04:00 Gulf Standard Time',
+                          'GMT+05:00 Pakistan Standard Time',
+                          'GMT+05:30 India Standard Time',
+                          'GMT+06:00 Bangladesh Standard Time',
+                          'GMT+07:00 Indochina Time',
+                          'GMT+08:00 China Standard Time',
+                          'GMT+09:00 Japan Standard Time',
+                          'GMT+10:00 Australian Eastern Time',
+                          'GMT-05:00 Eastern Standard Time',
+                          'GMT-06:00 Central Standard Time',
+                          'GMT-07:00 Mountain Standard Time',
+                          'GMT-08:00 Pacific Standard Time'
+                        ])}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-4">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Language</Label>
+                        <p className="text-sm text-muted-foreground mt-1">System display language</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('general', 'language', systemSettings.general.language, 'select', [
+                          'English',
+                          'Spanish',
+                          'French',
+                          'German',
+                          'Arabic',
+                          'Chinese',
+                          'Hindi',
+                          'Portuguese'
+                        ])}
+                      </div>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -264,17 +609,54 @@ export default function AdminSettings() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {settings.attendance.map((setting) => (
-                  <div key={setting.id} className="flex items-center justify-between py-4 border-b last:border-b-0">
-                    <div className="flex-1">
-                      <Label className="text-base font-medium">{setting.name}</Label>
-                      <p className="text-sm text-muted-foreground mt-1">{setting.description}</p>
-                    </div>
-                    <div className="ml-4">
-                      {renderSettingInput(setting, 'attendance')}
-                    </div>
+                {loadingSettings ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="h-6 w-6 animate-spin mr-2" />
+                    <span>Loading settings...</span>
                   </div>
-                ))}
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between py-4 border-b">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Auto Mark Absent</Label>
+                        <p className="text-sm text-muted-foreground mt-1">Automatically mark students as absent if not marked present</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('attendance', 'auto_mark_absent', systemSettings.attendance.auto_mark_absent, 'boolean')}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-4 border-b">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Attendance Window (minutes)</Label>
+                        <p className="text-sm text-muted-foreground mt-1">Time window for marking attendance after class starts</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('attendance', 'attendance_window', systemSettings.attendance.attendance_window, 'text')}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-4 border-b">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Late Threshold (minutes)</Label>
+                        <p className="text-sm text-muted-foreground mt-1">Minutes after which a student is marked as late</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('attendance', 'late_threshold', systemSettings.attendance.late_threshold, 'text')}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-4">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Require Reason</Label>
+                        <p className="text-sm text-muted-foreground mt-1">Require reason when marking students absent</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('attendance', 'require_reason', systemSettings.attendance.require_reason, 'boolean')}
+                      </div>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -292,23 +674,60 @@ export default function AdminSettings() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {settings.notifications.map((setting) => (
-                  <div key={setting.id} className="flex items-center justify-between py-4 border-b last:border-b-0">
-                    <div className="flex-1">
-                      <Label className="text-base font-medium">{setting.name}</Label>
-                      <p className="text-sm text-muted-foreground mt-1">{setting.description}</p>
-                    </div>
-                    <div className="ml-4">
-                      {renderSettingInput(setting, 'notifications')}
-                    </div>
+                {loadingSettings ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="h-6 w-6 animate-spin mr-2" />
+                    <span>Loading settings...</span>
                   </div>
-                ))}
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between py-4 border-b">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Email Notifications</Label>
+                        <p className="text-sm text-muted-foreground mt-1">Send email notifications to users</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('notifications', 'email_notifications', systemSettings.notifications.email_notifications, 'boolean')}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-4 border-b">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Parent Notifications</Label>
+                        <p className="text-sm text-muted-foreground mt-1">Send notifications to parents about attendance</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('notifications', 'parent_notifications', systemSettings.notifications.parent_notifications, 'boolean')}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-4 border-b">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Low Attendance Alert</Label>
+                        <p className="text-sm text-muted-foreground mt-1">Alert when student attendance falls below threshold</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('notifications', 'low_attendance_alert', systemSettings.notifications.low_attendance_alert, 'boolean')}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between py-4">
+                      <div className="flex-1">
+                        <Label className="text-base font-medium">Attendance Threshold (%)</Label>
+                        <p className="text-sm text-muted-foreground mt-1">Minimum attendance percentage before triggering alerts</p>
+                      </div>
+                      <div className="ml-4">
+                        {renderSystemSettingInput('notifications', 'attendance_threshold', systemSettings.notifications.attendance_threshold, 'text')}
+                      </div>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Security Settings */}
-          <TabsContent value="security">
+          {/* System Security Settings */}
+          <TabsContent value="system-security">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -472,8 +891,23 @@ export default function AdminSettings() {
 
         {/* Save Settings */}
         <div className="flex justify-end space-x-4">
-          <Button variant="outline" onClick={handleReset}>Reset to Defaults</Button>
-          <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/90">Save All Settings</Button>
+          <Button variant="outline" onClick={handleReset} disabled={loadingSettings}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Reset to Defaults
+          </Button>
+          <Button onClick={handleSave} disabled={loadingSettings || savingSettings} className="bg-primary text-primary-foreground hover:bg-primary/90">
+            {savingSettings ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save All Settings
+              </>
+            )}
+          </Button>
         </div>
       </div>
     </DashboardLayout>
