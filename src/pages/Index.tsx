@@ -98,10 +98,6 @@ export default function Index() {
 
         <div className="container mx-auto px-4 py-24 lg:py-32">
           <div className="mx-auto max-w-4xl text-center animate-fade-in">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
-              <Sparkles className="h-4 w-4" />
-              Enterprise-Grade Attendance System
-            </div>
             <h1 className="mb-6 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
               Smart Attendance{" "}
               <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
