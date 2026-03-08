@@ -80,9 +80,6 @@ export default function Index() {
           </Link>
           <div className="flex items-center gap-4">
             <Link to="/auth">
-              <Button variant="ghost">Sign In</Button>
-            </Link>
-            <Link to="/auth?mode=signup">
               <Button variant="hero">Get Started</Button>
             </Link>
           </div>

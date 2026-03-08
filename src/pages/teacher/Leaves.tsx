@@ -11,10 +11,11 @@ import {
     CheckCircle2,
     XCircle,
     MessageSquare,
-    AlertCircle
+    AlertCircle,
+    User
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { subscribeToAllLeaveRequests, updateLeaveRequestStatus, type LeaveRequest } from "@/lib/leaveUtils";
+import { subscribeToTeacherLeaveRequests, updateLeaveRequestStatus, type LeaveRequest } from "@/lib/leaveUtils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -36,9 +37,10 @@ export default function TeacherLeaves() {
     useEffect(() => {
         if (!userData?.userId) return;
 
-        const unsubscribeLeave = subscribeToAllLeaveRequests((allRequests) => {
+        // Subscribe to leave requests for this teacher only
+        const unsubscribeLeave = subscribeToTeacherLeaveRequests(userData.userId, (teacherRequests) => {
             // Sort by submittedAt desc
-            const sorted = [...allRequests].sort((a, b) =>
+            const sorted = [...teacherRequests].sort((a, b) =>
                 new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
             );
             setLeaveRequests(sorted);
@@ -137,7 +139,11 @@ export default function TeacherLeaves() {
                                                     <div className="flex flex-col md:flex-row justify-between gap-4">
                                                         <div className="space-y-2 flex-1">
                                                             <div className="flex items-center gap-2 flex-wrap">
+                                                                <User className="h-4 w-4 text-primary" />
                                                                 <h3 className="font-bold text-lg">{request.studentName}</h3>
+                                                                {request.section && (
+                                                                    <Badge variant="outline" className="text-xs">Section: {request.section}</Badge>
+                                                                )}
                                                                 <Badge variant="secondary" className="bg-primary/5">{request.type}</Badge>
                                                                 <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">
                                                                     Pending Review
