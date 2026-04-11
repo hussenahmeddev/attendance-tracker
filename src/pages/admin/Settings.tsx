@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { UserProfile } from "@/components/UserProfile";
+import { ThemeSettings } from "@/components/ThemeSettings";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -427,6 +428,8 @@ export default function AdminSettings() {
 
           {/* Preferences Tab */}
           <TabsContent value="preferences" className="space-y-4">
+            <ThemeSettings />
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -473,16 +476,6 @@ export default function AdminSettings() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">Admin Theme</h4>
-                      <p className="text-sm text-muted-foreground">Choose your preferred admin interface theme</p>
-                    </div>
-                    <Badge variant="secondary">Coming Soon</Badge>
-                  </div>
-                  
-                  <Separator />
-                  
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="font-medium">Dashboard Layout</h4>

@@ -68,19 +68,28 @@ const roles = [
 
 export default function Index() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-blue-950 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-500/30 rounded-full blur-3xl animate-pulse-soft"></div>
+        <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-500/30 rounded-full blur-3xl animate-pulse-soft" style={{ animationDelay: '1s' }}></div>
+        <div className="absolute top-1/2 left-1/2 w-80 h-80 bg-cyan-500/20 rounded-full blur-3xl animate-pulse-soft" style={{ animationDelay: '2s' }}></div>
+      </div>
+
       {/* Navigation */}
-      <nav className="fixed top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-white/5 backdrop-blur-xl">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
-              <GraduationCap className="h-5 w-5 text-primary-foreground" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg shadow-blue-500/50">
+              <GraduationCap className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold">EduTrack</span>
+            <span className="text-xl font-bold text-white">EduTrack</span>
           </Link>
           <div className="flex items-center gap-4">
             <Link to="/auth">
-              <Button variant="hero">Get Started</Button>
+              <Button className="bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-xl shadow-lg">
+                Get Started
+              </Button>
             </Link>
           </div>
         </div>
@@ -88,21 +97,16 @@ export default function Index() {
 
       {/* Hero Section */}
       <section className="relative overflow-hidden pt-16">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
-          <div className="absolute left-1/2 top-0 -z-10 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-primary/5 blur-3xl" />
-        </div>
-
         <div className="container mx-auto px-4 py-24 lg:py-32">
           <div className="mx-auto max-w-4xl text-center animate-fade-in">
-            <h1 className="mb-6 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+            <h1 className="mb-6 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl text-white drop-shadow-2xl">
               Smart Attendance{" "}
-              <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
                 Tracking
               </span>{" "}
               for Modern Education
             </h1>
-            <p className="mb-8 text-lg text-muted-foreground sm:text-xl">
+            <p className="mb-8 text-lg sm:text-xl text-blue-100/90">
               Streamline attendance management with role-based dashboards, real-time analytics,
               and automated notifications. Built for schools, colleges, and universities.
             </p>
@@ -111,13 +115,13 @@ export default function Index() {
       </section>
 
       {/* Features Section */}
-      <section className="border-t bg-muted/30 py-24">
+      <section className="relative py-24">
         <div className="container mx-auto px-4">
           <div className="mx-auto mb-16 max-w-2xl text-center">
-            <h2 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h2 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl text-white">
               Everything You Need to Manage Attendance
             </h2>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-lg text-blue-100/80">
               A complete solution designed for educational institutions of all sizes.
             </p>
           </div>
@@ -126,14 +130,14 @@ export default function Index() {
             {features.map((feature, index) => (
               <div
                 key={feature.title}
-                className="group rounded-2xl border bg-card p-6 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-1 animate-slide-up"
+                className="group rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 shadow-xl transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/20 hover:-translate-y-1 hover:bg-white/10 animate-slide-up"
                 style={{ animationDelay: `${index * 100}ms` }}
               >
-                <div className="mb-4 inline-flex rounded-xl bg-primary/10 p-3 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                <div className="mb-4 inline-flex rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 p-3 text-blue-300 transition-all duration-300 group-hover:from-blue-500 group-hover:to-purple-600 group-hover:text-white group-hover:shadow-lg group-hover:shadow-blue-500/50">
                   <feature.icon className="h-6 w-6" />
                 </div>
-                <h3 className="mb-2 text-xl font-semibold">{feature.title}</h3>
-                <p className="text-muted-foreground">{feature.description}</p>
+                <h3 className="mb-2 text-xl font-semibold text-white">{feature.title}</h3>
+                <p className="text-blue-100/70">{feature.description}</p>
               </div>
             ))}
           </div>
@@ -141,13 +145,13 @@ export default function Index() {
       </section>
 
       {/* Role Selection Section */}
-      <section className="py-24">
+      <section className="relative py-24">
         <div className="container mx-auto px-4">
           <div className="mx-auto mb-16 max-w-2xl text-center">
-            <h2 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h2 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl text-white">
               Tailored Dashboards for Every Role
             </h2>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-lg text-blue-100/80">
               Each user gets a personalized experience designed for their specific needs.
             </p>
           </div>
@@ -157,18 +161,18 @@ export default function Index() {
               <Link
                 key={role.title}
                 to={role.href}
-                className="group relative overflow-hidden rounded-2xl border bg-card p-8 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 animate-slide-up"
+                className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/30 hover:-translate-y-1 hover:bg-white/10 animate-slide-up"
                 style={{ animationDelay: `${index * 100}ms` }}
               >
-                <div className={`absolute inset-0 bg-gradient-to-br ${role.gradient} opacity-0 transition-opacity group-hover:opacity-5`} />
-                <div className={`mb-4 inline-flex rounded-xl bg-gradient-to-br ${role.gradient} p-3`}>
+                <div className={`absolute inset-0 bg-gradient-to-br ${role.gradient} opacity-0 transition-opacity group-hover:opacity-10`} />
+                <div className={`mb-4 inline-flex rounded-xl bg-gradient-to-br ${role.gradient} p-3 shadow-lg`}>
                   {role.title === "Administrator" && <ShieldCheck className="h-6 w-6 text-white" />}
                   {role.title === "Teacher" && <Users className="h-6 w-6 text-white" />}
                   {role.title === "Student" && <GraduationCap className="h-6 w-6 text-white" />}
                 </div>
-                <h3 className="mb-2 text-xl font-semibold">{role.title}</h3>
-                <p className="mb-4 text-muted-foreground">{role.description}</p>
-                <div className="flex items-center text-sm font-medium text-primary">
+                <h3 className="mb-2 text-xl font-semibold text-white">{role.title}</h3>
+                <p className="mb-4 text-blue-100/70">{role.description}</p>
+                <div className="flex items-center text-sm font-medium text-cyan-400">
                   Explore Dashboard
                   <ChevronRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </div>
@@ -179,13 +183,13 @@ export default function Index() {
       </section>
 
       {/* CTA Section */}
-      <section className="border-t bg-muted/30 py-24">
+      <section className="relative py-24">
         <div className="container mx-auto px-4">
           <div className="mx-auto max-w-3xl text-center">
-            <h2 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h2 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl text-white">
               Ready to Transform Your Attendance Management?
             </h2>
-            <p className="mb-8 text-lg text-muted-foreground">
+            <p className="mb-8 text-lg text-blue-100/80">
               Join thousands of educational institutions already using EduTrack.
             </p>
           </div>
@@ -193,16 +197,16 @@ export default function Index() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t py-12">
+      <footer className="relative border-t border-white/10 py-12 bg-black/20 backdrop-blur-xl">
         <div className="container mx-auto px-4">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-primary">
-                <GraduationCap className="h-4 w-4 text-primary-foreground" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg">
+                <GraduationCap className="h-4 w-4 text-white" />
               </div>
-              <span className="font-semibold">EduTrack</span>
+              <span className="font-semibold text-white">EduTrack</span>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-blue-100/60">
               © 2026 EduTrack. All rights reserved.
             </p>
           </div>

@@ -4,6 +4,8 @@ import { Bell, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { ChangePasswordDialog } from "@/components/auth/ChangePasswordDialog";
 
 type UserRole = "admin" | "teacher" | "student";
 
@@ -16,8 +18,6 @@ interface DashboardLayoutProps {
   pageTitle?: string;
   pageDescription?: string;
 }
-
-import { ChangePasswordDialog } from "@/components/auth/ChangePasswordDialog";
 
 export function DashboardLayout({
   children,
@@ -54,24 +54,24 @@ export function DashboardLayout({
   const section = userSection || userData?.section || "";
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex bg-background">
       <ChangePasswordDialog />
       <DashboardSidebar
         role={role}
         userName={displayName}
         userEmail={email}
         userSection={section}
-        className={`${currentStyle.sidebar} text-white`}
+        className={`${currentStyle.sidebar} text-white dark:bg-sidebar-background dark:border-sidebar-border`}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 px-6 shadow-sm">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-6 shadow-sm">
           <div className="flex items-center gap-4">
-            <div className={`w-1.5 h-6 rounded-full ${currentStyle.indicator} mr-2`} />
+            <div className={`w-1.5 h-6 rounded-full ${currentStyle.indicator}`} />
             {pageTitle && (
               <div>
-                <h1 className="text-xl font-semibold">{pageTitle}</h1>
+                <h1 className="text-xl font-semibold text-foreground">{pageTitle}</h1>
                 {pageDescription && (
                   <p className="text-sm text-muted-foreground">{pageDescription}</p>
                 )}
@@ -87,6 +87,7 @@ export function DashboardLayout({
                 className="w-64 pl-9"
               />
             </div>
+            <ThemeToggle />
             <Button variant="ghost" size="icon">
               <Bell className="h-5 w-5" />
             </Button>
@@ -94,7 +95,7 @@ export function DashboardLayout({
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 p-6 overflow-auto bg-background">
 
           {children}
         </main>

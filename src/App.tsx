@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -40,12 +41,13 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <InstallPrompt />
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
+      <ThemeProvider>
+        <TooltipProvider>
+          <InstallPrompt />
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route
@@ -229,6 +231,7 @@ const App = () => {
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
+    </ThemeProvider>
     </QueryClientProvider>
   );
 };

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { getEnrolledClassesForStudent, type Class } from "@/lib/classUtils";
 import { calculateStudentAttendanceSummary } from "@/lib/attendanceUtils";
@@ -46,13 +46,11 @@ export default function StudentDashboard() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
 
-  // Fetch student data and statistics
   useEffect(() => {
     const fetchData = async () => {
       if (!userData?.userId) return;
 
       try {
-        // Fetch users for system status
         const usersCollection = collection(db, 'users');
         const usersSnapshot = await getDocs(usersCollection);
         const usersData = usersSnapshot.docs.map(doc => ({
@@ -66,26 +64,23 @@ export default function StudentDashboard() {
         } as User));
         setUsers(usersData);
 
-        // Fetch enrolled classes
         const classes = await getEnrolledClassesForStudent(userData.userId);
         setEnrolledClasses(classes);
 
-        // Calculate classes today
-        const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }); // e.g., "Monday"
+        const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
         const todayClasses = classes.filter(cls =>
           cls.schedule && cls.schedule.toLowerCase().includes(today.toLowerCase().substring(0, 3))
         );
         setClassesToday(todayClasses);
 
-        // Fetch attendance stats
         try {
           const summary = await calculateStudentAttendanceSummary(userData.userId);
 
           setStudentStats({
             classesToday: todayClasses.length,
             attendanceRate: summary.attendancePercentage,
-            totalClasses: classes.length, // Use actual count of enrolled classes
-            pendingRequests: DEFAULT_VALUES.PENDING_REQUESTS // Keep default for now
+            totalClasses: classes.length,
+            pendingRequests: DEFAULT_VALUES.PENDING_REQUESTS
           });
         } catch (error) {
           console.error('Error fetching attendance summary:', error);
@@ -115,12 +110,18 @@ export default function StudentDashboard() {
 
   if (loading || dataLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-          <p className="text-muted-foreground">Loading dashboard...</p>
+      <DashboardLayout
+        role="student"
+        pageTitle="Student Dashboard"
+        pageDescription={`My Learning Portal & Progress - ${userData?.displayName || 'Student'}`}
+      >
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+            <p className="text-muted-foreground">Loading dashboard...</p>
+          </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 

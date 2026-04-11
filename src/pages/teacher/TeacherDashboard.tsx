@@ -15,15 +15,13 @@ import {
   AlertCircle,
   ChevronRight,
   FileText,
-  MessageSquare,
-  Settings,
   TrendingUp,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { fetchTeacherClasses, type Class } from "@/lib/classUtils";
 import { fetchTeacherAttendance, getLocalYMD } from "@/lib/attendanceUtils";
-import { subscribeToAllLeaveRequests, type LeaveRequest } from "@/lib/leaveUtils";
-import { DEFAULT_VALUES, ATTENDANCE_WEIGHTS } from "@/config/constants";
+import { subscribeToAllLeaveRequests } from "@/lib/leaveUtils";
+import { ATTENDANCE_WEIGHTS } from "@/config/constants";
 import { useNavigate } from "react-router-dom";
 
 export default function TeacherDashboard() {
@@ -46,12 +44,10 @@ export default function TeacherDashboard() {
 
     const fetchData = async () => {
       try {
-        // 1. Fetch assigned classes
         const teacherClasses = await fetchTeacherClasses(userData.userId);
         const activeClasses = teacherClasses.filter(c => c.status === 'active');
         setClasses(activeClasses);
 
-        // 2. Determine today's classes from schedule text
         const today = new Date();
         const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
         const todayDay = dayNames[today.getDay()];
@@ -60,7 +56,6 @@ export default function TeacherDashboard() {
         );
         setTodayClasses(todaysSchedule);
 
-        // 3. Fetch today's attendance summary
         const todayStr = getLocalYMD();
         const allRecords = await fetchTeacherAttendance(userData.userId);
         const todayRecords = allRecords.filter(r => r.date === todayStr);
@@ -69,7 +64,6 @@ export default function TeacherDashboard() {
         const absent = todayRecords.filter(r => r.status === 'absent').length;
         const late = todayRecords.filter(r => r.status === 'late').length;
 
-        // Overall attendance rate
         let overallRate = 0;
         if (allRecords.length > 0) {
           const totalPresent = allRecords.filter(r => r.status === 'present').length;
@@ -96,7 +90,6 @@ export default function TeacherDashboard() {
       }
     };
 
-    // Subscribe to leave requests
     const unsubscribe = subscribeToAllLeaveRequests((requests) => {
       setPendingLeaves(requests.filter(r => r.status === 'pending').length);
     });
@@ -107,9 +100,15 @@ export default function TeacherDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
+      <DashboardLayout
+        role="teacher"
+        pageTitle="Teacher Dashboard"
+        pageDescription="Overview of your classes, schedule, and attendance"
+      >
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </DashboardLayout>
     );
   }
 
@@ -296,53 +295,6 @@ export default function TeacherDashboard() {
           </Card>
         </div>
 
-        {/* Assigned Classes Overview */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <BookOpen className="h-5 w-5" />
-                Assigned Classes
-              </CardTitle>
-              <Button size="sm" variant="ghost" onClick={() => navigate('/teacher/classes')}>
-                View All <ChevronRight className="ml-1 h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {dataLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-              </div>
-            ) : classes.length === 0 ? (
-              <div className="text-center py-8">
-                <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                <p className="text-muted-foreground">No classes assigned yet</p>
-                <p className="text-sm text-muted-foreground">Contact admin to get classes assigned</p>
-              </div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                {classes.slice(0, 4).map((cls) => (
-                  <div key={cls.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/10 transition-colors">
-                    <div>
-                      <p className="font-medium">{cls.name}</p>
-                      <p className="text-sm text-muted-foreground">{cls.subject} • Grade {cls.grade}</p>
-                    </div>
-                    <div className="text-right">
-                      <Badge variant="outline">{cls.students} students</Badge>
-                    </div>
-                  </div>
-                ))}
-                {classes.length > 4 && (
-                  <p className="text-sm text-muted-foreground text-center col-span-2">
-                    +{classes.length - 4} more classes
-                  </p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Quick Actions */}
         <Card>
           <CardHeader className="pb-3">
@@ -363,7 +315,7 @@ export default function TeacherDashboard() {
                 <span>Generate Report</span>
               </Button>
               <Button variant="outline" className="justify-start h-auto py-3" onClick={() => navigate('/teacher/leaves')}>
-                <MessageSquare className="h-4 w-4 mr-2 shrink-0" />
+                <AlertCircle className="h-4 w-4 mr-2 shrink-0" />
                 <span>Leave Requests</span>
               </Button>
             </div>

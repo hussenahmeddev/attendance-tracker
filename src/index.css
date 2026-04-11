@@ -76,56 +76,73 @@
   }
 
   .dark {
-    --background: 222 47% 6%;
+    /* Deep dark backgrounds - consistent throughout */
+    --background: 222 47% 8%;
     --foreground: 210 40% 98%;
 
-    --card: 222 47% 9%;
+    /* Cards with subtle elevation - still dark */
+    --card: 222 47% 11%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 222 47% 9%;
+    --popover: 222 47% 11%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 226 70% 55%;
+    /* Primary - Brighter for contrast */
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 222 47% 15%;
+    /* Secondary - Dark but visible */
+    --secondary: 222 47% 16%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 222 47% 15%;
-    --muted-foreground: 215 20% 65%;
+    /* Muted - Dark with good contrast */
+    --muted: 222 47% 14%;
+    --muted-foreground: 215 20% 70%;
 
-    --accent: 173 58% 45%;
+    /* Accent - Vibrant teal */
+    --accent: 173 58% 50%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 62% 45%;
+    /* Status colors - Adjusted for dark theme */
+    --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 76% 42%;
+    --success: 142 76% 45%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 55%;
-    --warning-foreground: 0 0% 0%;
+    --warning: 38 92% 60%;
+    --warning-foreground: 222 47% 11%;
 
-    --info: 199 89% 55%;
+    --info: 199 89% 60%;
     --info-foreground: 0 0% 100%;
 
-    --border: 222 47% 20%;
-    --input: 222 47% 20%;
-    --ring: 226 70% 55%;
+    /* Borders and inputs - Subtle but visible */
+    --border: 222 47% 18%;
+    --input: 222 47% 16%;
+    --ring: 217 91% 60%;
 
-    --sidebar-background: 222 47% 6%;
+    /* Sidebar - Matches main background */
+    --sidebar-background: 222 47% 8%;
     --sidebar-foreground: 210 40% 96%;
-    --sidebar-primary: 226 70% 55%;
+    --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 47% 12%;
+    --sidebar-accent: 222 47% 14%;
     --sidebar-accent-foreground: 210 40% 96%;
-    --sidebar-border: 222 47% 15%;
-    --sidebar-ring: 226 70% 55%;
+    --sidebar-border: 222 47% 16%;
+    --sidebar-ring: 217 91% 60%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(226, 70%, 45%) 0%, hsl(226, 70%, 55%) 100%);
+    /* Gradients - Dark theme versions */
+    --gradient-primary: linear-gradient(135deg, hsl(217, 91%, 50%) 0%, hsl(217, 91%, 60%) 100%);
     --gradient-accent: linear-gradient(135deg, hsl(173, 58%, 45%) 0%, hsl(173, 58%, 55%) 100%);
-    --gradient-hero: linear-gradient(135deg, hsl(226, 70%, 40%) 0%, hsl(173, 58%, 45%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(222, 47%, 9%) 0%, hsl(222, 47%, 7%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(217, 91%, 45%) 0%, hsl(173, 58%, 50%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(222, 47%, 11%) 0%, hsl(222, 47%, 9%) 100%);
+
+    /* Shadows for dark theme - More subtle */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+    --shadow-glow: 0 0 20px hsl(217 91% 60% / 0.4);
   }
 }
 
@@ -146,6 +163,122 @@
   h5,
   h6 {
     @apply font-semibold tracking-tight;
+  }
+
+  /* Ensure all backgrounds respect theme */
+  .dark {
+    color-scheme: dark;
+  }
+
+  /* Force dark backgrounds on common elements */
+  .dark body,
+  .dark main,
+  .dark section,
+  .dark div[class*="dashboard"],
+  .dark div[class*="layout"] {
+    @apply bg-background;
+  }
+
+  /* Override hardcoded white backgrounds in dark mode */
+  .dark .bg-white,
+  .dark [class*="bg-white"] {
+    @apply bg-card !important;
+  }
+
+  /* Override hardcoded slate backgrounds */
+  .dark .bg-slate-50,
+  .dark .bg-slate-100 {
+    @apply bg-background !important;
+  }
+
+  .dark .bg-slate-200 {
+    @apply bg-muted !important;
+  }
+
+  /* Override hardcoded gray backgrounds */
+  .dark .bg-gray-50,
+  .dark .bg-gray-100 {
+    @apply bg-background !important;
+  }
+
+  .dark .bg-gray-200 {
+    @apply bg-muted !important;
+  }
+
+  /* Ensure cards are properly dark */
+  .dark [class*="card"],
+  .dark [class*="Card"] {
+    @apply bg-card text-card-foreground;
+  }
+
+  /* Tables in dark mode */
+  .dark table {
+    @apply bg-card;
+  }
+
+  .dark thead {
+    @apply bg-muted;
+  }
+
+  .dark tbody tr {
+    @apply border-border hover:bg-muted/50;
+  }
+
+  /* Inputs and selects */
+  .dark input,
+  .dark select,
+  .dark textarea {
+    @apply bg-input border-border text-foreground;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    @apply text-muted-foreground;
+  }
+
+  /* Dropdowns and popovers */
+  .dark [role="menu"],
+  .dark [role="listbox"],
+  .dark [data-radix-popper-content-wrapper] {
+    @apply bg-popover text-popover-foreground;
+  }
+
+  /* Override text colors for better contrast */
+  .dark .text-slate-800,
+  .dark .text-slate-900,
+  .dark .text-gray-800,
+  .dark .text-gray-900 {
+    @apply text-foreground !important;
+  }
+
+  .dark .text-slate-600,
+  .dark .text-slate-700,
+  .dark .text-gray-600,
+  .dark .text-gray-700 {
+    @apply text-muted-foreground !important;
+  }
+
+  /* Badges and status indicators */
+  .dark .bg-blue-100,
+  .dark .bg-green-100,
+  .dark .bg-red-100,
+  .dark .bg-purple-100,
+  .dark .bg-orange-100,
+  .dark .bg-yellow-100 {
+    @apply bg-muted !important;
+  }
+
+  /* Ensure proper contrast for colored backgrounds */
+  .dark .bg-blue-50 {
+    @apply bg-blue-950/30 !important;
+  }
+
+  .dark .bg-green-50 {
+    @apply bg-green-950/30 !important;
+  }
+
+  .dark .bg-red-50 {
+    @apply bg-red-950/30 !important;
   }
 }
 
