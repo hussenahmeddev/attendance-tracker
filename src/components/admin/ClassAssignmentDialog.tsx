@@ -60,10 +60,12 @@ export function ClassAssignmentDialog({ open, onOpenChange, onAssignmentComplete
       
       // Fetch users
       const usersSnapshot = await getDocs(collection(db, 'users'));
-      const usersData = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as User));
+      const usersData = usersSnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as User))
+        .filter(user => !(user as any).deleted);
 
       // Fetch classes
       const classesSnapshot = await getDocs(collection(db, 'classes'));

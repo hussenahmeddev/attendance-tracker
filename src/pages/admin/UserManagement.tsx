@@ -57,6 +57,7 @@ interface User {
   section?: string;
   enrolledClasses?: string[];
   teachingClasses?: string[];
+  deleted?: boolean;
 }
 
 interface Class {
@@ -108,10 +109,12 @@ export default function UserManagement() {
       // Fetch users from Firestore (these are keyed by Firebase Auth UID)
       const usersSnapshot = await getDocs(collection(db, 'users'));
       
-      const usersData = usersSnapshot.docs.map(doc => ({
-        id: doc.id, // This is the Firebase Auth UID
-        ...doc.data()
-      } as User));
+      const usersData = usersSnapshot.docs
+        .map(doc => ({
+          id: doc.id, // This is the Firebase Auth UID
+          ...doc.data()
+        } as User))
+        .filter(user => !user.deleted);
 
       // Fetch classes for assignments
       const classesData = await fetchAllClasses();
@@ -231,12 +234,19 @@ export default function UserManagement() {
   // Delete user
   const handleDeleteUser = async (userId: string) => {
     try {
-      await deleteDoc(doc(db, 'users', userId));
+      // Use soft delete since Firebase Client SDK cannot delete Auth users
+      // and Firestore rules typically prevent document deletion
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        status: 'deactivate',
+        deleted: true,
+        updatedAt: new Date().toISOString()
+      });
       toast.success('User deleted successfully');
       fetchData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting user:', error);
-      toast.error('Failed to delete user');
+      toast.error(`Failed to delete user: ${error.message || error}`);
     }
   };
 

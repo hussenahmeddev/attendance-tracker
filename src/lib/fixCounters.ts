@@ -90,7 +90,7 @@ export const getEnrollmentStats = async () => {
 export const fixUserCounters = async () => {
   try {
     const usersSnapshot = await getDocs(collection(db, 'users'));
-    const users = usersSnapshot.docs.map(doc => doc.data());
+    const users = usersSnapshot.docs.map(doc => doc.data()).filter(u => !u.deleted);
 
     const counters = {
       admin: users.filter(u => u.role === 'admin').length,

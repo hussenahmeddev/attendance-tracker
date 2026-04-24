@@ -31,7 +31,7 @@ export default function AdminDashboard() {
 
         // Fetch users
         const usersSnapshot = await getDocs(collection(db, 'users'));
-        const users = usersSnapshot.docs.map(doc => doc.data());
+        const users = usersSnapshot.docs.map(doc => doc.data()).filter(u => !u.deleted);
 
         const totalUsers = users.length;
         const totalStudents = users.filter(u => u.role === 'student').length;

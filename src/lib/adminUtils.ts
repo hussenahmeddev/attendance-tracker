@@ -413,7 +413,7 @@ const generateRandomPassword = (): string => {
 export const exportUsersToCSV = async (): Promise<string> => {
   try {
     const usersSnapshot = await getDocs(collection(db, 'users'));
-    const users = usersSnapshot.docs.map(doc => doc.data());
+    const users = usersSnapshot.docs.map(doc => doc.data()).filter(u => !u.deleted);
 
     const csvHeaders = ['User ID', 'Name', 'Email', 'Role', 'Section', 'Status', 'Created At'];
     const csvRows = users.map(user => [
